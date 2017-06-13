@@ -224,7 +224,7 @@ export class ClientTester {
         });
         conn.on('message', (message: IMessage) => {
           if (message.type === 'binary') {
-            const messageInfo = ChannelUtils.parseBraidMessage(message.binaryData);
+            const messageInfo = ChannelUtils.parseChannelMessage(message.binaryData);
             void client.handleMessage(messageInfo.info);
           } else {
             console.error('TestClient: Unexpected string-type channel message', message);
@@ -366,7 +366,7 @@ export class ClientTester {
       history: true,
       rawPayload: new TextEncoder().encode(JSON.stringify({ text: text }))
     };
-    const byteArray = ChannelUtils.serializeBraidMessage(messageInfo, 0, 0);
+    const byteArray = ChannelUtils.serializeChannelMessage(messageInfo, 0, 0);
     client.conn.sendBytes(new Buffer(byteArray));
   }
 

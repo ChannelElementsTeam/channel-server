@@ -4,7 +4,7 @@
   "baseClientUri": "http://localhost:31111",
   "baseTransportUri": "ws://localhost:31111",
   "mongo": {
-    "mongoUrl": "mongodb://localhost:27017/braid-comm",
+    "mongoUrl": "mongodb://localhost:27017/channel-server",
     "options": {},
     "serverOptions": {
       "socketOptions": {

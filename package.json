@@ -1,21 +1,21 @@
 {
-  "name": "braid-comm-server",
+  "name": "channel-server",
   "version": "0.1.0",
-  "description": "Braid Communication Server",
+  "description": "Channel Elements Server",
   "main": "src/index.js",
   "scripts": {
     "start": "node dist/index.js"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SevogleAdmin/braid-comm-server.git"
+    "url": "git+https://github.com/ChannelElementsTeam/channel-server.git"
   },
   "author": "Hivepoint, Inc.",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/SevogleAdmin/braid-comm-server/issues"
+    "url": "https://github.com/ChannelElementsTeam/channel-server/issues"
   },
-  "homepage": "https://github.com/SevogleAdmin/braid-comm-server#readme",
+  "homepage": "https://github.com/ChannelElementsTeam/channel-server#readme",
   "dependencies": {
     "@types/basic-auth": "^1.1.1",
     "@types/text-encoding": "0.0.30",

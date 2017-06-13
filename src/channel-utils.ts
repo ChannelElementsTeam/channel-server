@@ -5,7 +5,7 @@ import { TextDecoder, TextEncoder } from 'text-encoding';
 export class ChannelUtils {
   static MESSAGE_HEADER_LENGTH = 32;
 
-  static serializeBraidMessage(messageInfo: MessageInfo, lastTimestampSent: number, clockSkew: number): Uint8Array {
+  static serializeChannelMessage(messageInfo: MessageInfo, lastTimestampSent: number, clockSkew: number): Uint8Array {
     // Allocate the proper length...
     let jsonPayloadBuffer: Uint8Array;
     let length = this.MESSAGE_HEADER_LENGTH;
@@ -71,7 +71,7 @@ export class ChannelUtils {
     return result;
   }
 
-  static parseBraidMessage(message: Uint8Array): ParsedMessageInfo {
+  static parseChannelMessage(message: Uint8Array): ParsedMessageInfo {
     const result: ParsedMessageInfo = {
       rawMessage: message,
       valid: false
@@ -143,7 +143,7 @@ export class ChannelUtils {
       senderCode: 0,
       controlMessagePayload: controlMessagePayload
     };
-    return this.serializeBraidMessage(messageInfo, 0, 0);
+    return this.serializeChannelMessage(messageInfo, 0, 0);
   }
 
   static serializeControlMessage(requestId: string, type: string, details: any): Uint8Array {
@@ -160,6 +160,6 @@ export class ChannelUtils {
     const messageInfo: MessageInfo = {
       controlMessagePayload: controlPayload
     };
-    return this.serializeBraidMessage(messageInfo, 0, 0);
+    return this.serializeChannelMessage(messageInfo, 0, 0);
   }
 }

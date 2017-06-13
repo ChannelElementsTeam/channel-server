@@ -10,7 +10,7 @@ import { TextDecoder, TextEncoder } from 'text-encoding';
 import { TransportServer, TransportEventHandler, MessageHandlingDirective, ControlMessageDirective } from './transport-server';
 import { db } from "./db";
 import { UserRecord, ChannelMemberRecord, ChannelRecord, ChannelOptions, MessageRecord } from './interfaces/db-records';
-import { RegistrationResponse, BraidResponse, RegistrationRequest, ChannelCreateRequest, GetChannelResponse, ChannelMemberInfo, ControlChannelMessage, MessageInfo, ChannelParticipantInfo, AccountResponse, AccountUpdateRequest, JoinRequestDetails, JoinResponseDetails, JoinNotificationDetails, ErrorDetails, ShareRequest, ShareResponse, ShareCodeResponse, LeaveNotificationDetails, HistoryRequestDetails, HistoryResponseDetails, ControlMessagePayload, ParsedMessageInfo, ProviderServiceList, ChannelListResponse, ChannelSummary, LeaveRequestDetails } from './interfaces/channel-server-interfaces';
+import { RegistrationResponse, ChannelServerResponse, RegistrationRequest, ChannelCreateRequest, GetChannelResponse, ChannelMemberInfo, ControlChannelMessage, MessageInfo, ChannelParticipantInfo, AccountResponse, AccountUpdateRequest, JoinRequestDetails, JoinResponseDetails, JoinNotificationDetails, ErrorDetails, ShareRequest, ShareResponse, ShareCodeResponse, LeaveNotificationDetails, HistoryRequestDetails, HistoryResponseDetails, ControlMessagePayload, ParsedMessageInfo, ProviderServiceList, ChannelListResponse, ChannelSummary, LeaveRequestDetails } from './interfaces/channel-server-interfaces';
 import { ChannelUtils } from "./channel-utils";
 import { Utils } from "./utils";
 

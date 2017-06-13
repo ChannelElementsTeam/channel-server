@@ -13,14 +13,14 @@ import * as url from 'url';
 import { configuration } from "./configuration";
 import { db } from './db';
 import { ChannelServer } from './channel-server';
-import { BraidResponse } from "./interfaces/channel-server-interfaces";
+import { ChannelServerResponse } from "./interfaces/channel-server-interfaces";
 
 import { clientTester } from './testing/client-test';
 
 const VERSION = 1;
 const DYNAMIC_BASE = '/d';
 
-class BraidCommServer {
+class ChannelElementsServer {
   private app: express.Application;
   private server: net.Server;
   private expressWs: any;
@@ -32,24 +32,35 @@ class BraidCommServer {
     await this.setupConfiguration();
     await db.initialize();
     await this.setupExpress();
-    this.channelServer = new ChannelServer(this.app, this.server, url.resolve(configuration.get('baseClientUri'), "/braid.json"), configuration.get('baseClientUri'), configuration.get('baseClientUri'), DYNAMIC_BASE, configuration.get('baseTransportUri'), '/transport/s1');
+    this.channelServer = new ChannelServer(this.app, this.server, url.resolve(configuration.get('baseClientUri'), "/channelelements.json"), configuration.get('baseClientUri'), configuration.get('baseClientUri'), DYNAMIC_BASE, configuration.get('baseTransportUri'), '/transport/s1');
     await this.channelServer.start();
     await this.setupServerPing();
     this.started = Date.now();
 
     clientTester.initialize(this.app);
 
-    console.log("Braid server running");
+    console.log("Channel Elements Server is running");
   }
 
-  private setupBraidResponse() {
-    this.app.get('/braid.json', (request: Request, response: Response) => {
-      const reply: BraidResponse = {
-        version: 1,
+  private setupChannelServerResponse() {
+    this.app.get('/channelelements.json', (request: Request, response: Response) => {
+      const reply: ChannelServerResponse = {
+        protocolVersion: "0.1.0",
+        implementorVersion: "0.1.0",
         services: this.channelServer.getServicesList(),
+        implementationDetails: this.getServerImplementationDetails()
       };
       response.json(reply);
     });
+  }
+
+  private getServerImplementationDetails(): any {
+    const result: any = {
+      implementation: "Reference Implementation",
+      by: "HivePoint, Inc.",
+      contact: "info@hivepoint.com"
+    };
+    return result;
   }
 
   private setupExceptionHandling(): void {
@@ -145,7 +156,7 @@ class BraidCommServer {
       response.setHeader('Cache-Control', 'no-cache, no-store, max-age=0, must-revalidate');
       response.setHeader('Content-Type', 'application/json');
       const result: any = {
-        product: 'Braid-Comm-Server',
+        product: 'Channel-Elements-Server',
         status: 'OK',
         version: VERSION,
         deployed: new Date(this.started).toISOString(),
@@ -156,6 +167,6 @@ class BraidCommServer {
 
 }
 
-const server = new BraidCommServer();
+const server = new ChannelElementsServer();
 
 void server.start();

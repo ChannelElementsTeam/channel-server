@@ -8,9 +8,12 @@ export interface ProviderServiceList {
   createChannelUrl: string;
   channelListUrl: string;
 }
-export interface BraidResponse {
-  version: number;
+
+export interface ChannelServerResponse {
+  protocolVersion: string;  // e.g., "1.0.0":  conforms to which version of the specification
+  implementorVersion: string;  // e.g., "1.0.0"
   services: ProviderServiceList;
+  implementationDetails: any; // for implementor to provide additional information
 }
 
 export interface RegistrationRequest {

@@ -8,30 +8,30 @@ import { ChannelUtils } from "./channel-utils";
 
 export class TransportServer {
   private expressWs: any;
-  private wsapp: ExpressWithBraidSockets;
+  private wsapp: ExpressWithChannelSockets;
   private controller: TransportEventHandler;
-  private socketsById: { [socketId: string]: BraidSocket } = {};
+  private socketsById: { [socketId: string]: ChannelSocket } = {};
   relativeTransportUrl: string;
 
   constructor(app: express.Application, server: net.Server, controller: TransportEventHandler, relativeTransportUrl: string) {
     require('express-ws')(app, server);
-    this.wsapp = app as ExpressWithBraidSockets;
+    this.wsapp = app as ExpressWithChannelSockets;
     this.controller = controller;
     this.relativeTransportUrl = relativeTransportUrl;
   }
 
   start(): void {
-    this.wsapp.ws(this.relativeTransportUrl, (ws: BraidSocket, request: Request) => {
+    this.wsapp.ws(this.relativeTransportUrl, (ws: ChannelSocket, request: Request) => {
       console.log("Transport: connection requested");
       void this.controller.handleSocketConnectRequest(request).then((socketId: string) => {
         if (socketId) {
           this.socketsById[socketId] = ws;
           ws.on('message', (message: Uint8Array | string) => {
-            void this.handleBraidSocketMessage(ws, message, socketId);
+            void this.handleChannelSocketMessage(ws, message, socketId);
             return false;
           });
           ws.on('close', () => {
-            void this.handleBraidSocketClose(ws, request, socketId);
+            void this.handleChannelSocketClose(ws, request, socketId);
           });
           console.log("Transport: connection accepted", socketId);
         } else {
@@ -42,9 +42,9 @@ export class TransportServer {
     });
   }
 
-  private async handleBraidSocketMessage(ws: BraidSocket, message: Uint8Array | string, socketId: string): Promise<void> {
+  private async handleChannelSocketMessage(ws: ChannelSocket, message: Uint8Array | string, socketId: string): Promise<void> {
     if (message instanceof Uint8Array) {
-      const messageInfo = await ChannelUtils.parseBraidMessage(message as Uint8Array);
+      const messageInfo = await ChannelUtils.parseChannelMessage(message as Uint8Array);
       if (messageInfo.valid) {
         const directive = await this.controller.handleReceivedMessage(messageInfo.info, socketId);
         for (const targetSocketId of directive.forwardMessageToSockets) {
@@ -63,7 +63,7 @@ export class TransportServer {
     }
   }
 
-  private async handleBraidSocketClose(ws: BraidSocket, request: Request, socketId: string): Promise<void> {
+  private async handleChannelSocketClose(ws: ChannelSocket, request: Request, socketId: string): Promise<void> {
     console.log("Transport: connection closed", socketId);
     delete this.socketsById[socketId];
     await this.controller.handleSocketClosed(socketId);
@@ -86,14 +86,14 @@ export class TransportServer {
 
 }
 
-interface BraidSocket {
+interface ChannelSocket {
   on: (event: string, handler: (arg?: any) => void) => void;
   send: (contents: Uint8Array) => void;
   close: () => void;
   bufferedAmount: number;
 }
 
-interface ExpressWithBraidSockets extends express.Application {
+interface ExpressWithChannelSockets extends express.Application {
   ws: (path: string, callback: (ws: any, request: Request) => void) => void;
 }
 
