@@ -1,0 +1,1 @@
+This is where we place type definitions for node packages that don't have public type definitions.
