@@ -123,7 +123,7 @@ class ChannelElementsServer {
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Access-Control-Allow-Credentials", "true");
       if (req.method.toLowerCase() === "options") {
-        res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+        res.setHeader("Access-Control-Allow-Methods", "POST, GET, DELETE, OPTIONS");
         const requestedHeaders = req.header("Access-Control-Request-Headers");
         if (requestedHeaders) {
           res.setHeader("Access-Control-Allow-Headers", requestedHeaders);
