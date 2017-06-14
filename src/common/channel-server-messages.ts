@@ -106,7 +106,7 @@ export interface ChannelSummary {
 
 export interface ChannelListResponse {
   total: number;
-  channels: ChannelSummary[];
+  channels: GetChannelResponse[];
 }
 
 export interface ChannelParticipantInfo {

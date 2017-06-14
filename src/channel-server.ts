@@ -341,14 +341,30 @@ export class ChannelServer implements TransportEventHandler {
     for (const record of memberRecords) {
       const channelRecord = await db.findChannelById(record.channelId);
       if (channelRecord && channelRecord.status === 'active') {
-        const channelSummary: ChannelSummary = {
+        const channelDetails: GetChannelResponse = {
           channelId: record.channelId,
-          channelUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/channels/' + record.channelId),
-          isCreator: user.id === channelRecord.creatorId,
-          lastActive: record.lastActive,
-          details: channelRecord.details
+          transportUrl: this.transportBaseUrl + this.transport.relativeTransportUrl,
+          registerUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/register'),
+          channelUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/channels/' + channelRecord.channelId),
+          sharingUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/invite/' + channelRecord.channelId),
+          options: channelRecord.options,
+          details: channelRecord.details,
+          members: [],
+          created: channelRecord.created,
+          lastUpdated: channelRecord.lastUpdated
         };
-        reply.channels.push(channelSummary);
+        const members = await db.findChannelMembers(channelRecord.channelId, 'active');
+        for (const member of members) {
+          const info: ChannelMemberInfo = {
+            participantId: member.participantId,
+            isCreator: member.userId === channelRecord.creatorId,
+            details: member.participantDetails,
+            memberSince: member.added,
+            lastActive: member.lastActive,
+          };
+          channelDetails.members.push(info);
+        }
+        reply.channels.push(channelDetails);
       }
     }
     console.log("ChannelServer: channel list fetched", user.id, lastActiveBefore, limit, count);
