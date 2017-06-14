@@ -87,6 +87,7 @@ export interface GetChannelResponse {
   sharingUrl: string;
   options: ChannelOptions;
   details: any;
+  isCreator: boolean;
   members: ChannelMemberInfo[];
   created: number;
   lastUpdated: number;

@@ -305,6 +305,7 @@ export class ChannelServer implements TransportEventHandler {
       sharingUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/invite/' + channelRecord.channelId),
       options: channelRecord.options,
       details: channelRecord.details,
+      isCreator: channelRecord.creatorId === user.id,
       members: [],
       created: channelRecord.created,
       lastUpdated: channelRecord.lastUpdated
@@ -349,6 +350,7 @@ export class ChannelServer implements TransportEventHandler {
           sharingUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/invite/' + channelRecord.channelId),
           options: channelRecord.options,
           details: channelRecord.details,
+          isCreator: channelRecord.creatorId === user.id,
           members: [],
           created: channelRecord.created,
           lastUpdated: channelRecord.lastUpdated
