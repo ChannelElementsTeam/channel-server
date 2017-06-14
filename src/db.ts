@@ -34,14 +34,14 @@ export class Database {
   private async initializeChannels(): Promise<void> {
     this.channels = this.db.collection('channels');
     await this.channels.createIndex({ channelId: 1 }, { unique: true });
+    await this.channels.createIndex({ lastUpdated: -1 });
   }
 
   private async initializeChannelMembers(): Promise<void> {
     this.channelMembers = this.db.collection('channelMembers');
     await this.channelMembers.createIndex({ channelId: 1, userId: 1 }, { unique: true });
-    await this.channelMembers.createIndex({ channelId: 1, participantId: 1 }, { unique: true });
-    await this.channelMembers.createIndex({ channelId: 1, status: 1, userId: 1 });
-    await this.channelMembers.createIndex({ userId: 1, status: 1, lastActive: -1 }, { unique: true });
+    await this.channelMembers.createIndex({ channelId: 1, status: 1, lastActive: -1 });
+    await this.channelMembers.createIndex({ userId: 1, status: 1, lastActive: -1 });
   }
 
   private async initializeInvitations(): Promise<void> {
@@ -71,10 +71,6 @@ export class Database {
 
   async findUserById(id: string): Promise<UserRecord> {
     return await this.users.findOne<UserRecord>({ id: id });
-  }
-
-  async findUserByToken(token: string): Promise<UserRecord> {
-    return await this.users.findOne<UserRecord>({ token: token });
   }
 
   async updateUserStatus(id: string, status: string): Promise<void> {
@@ -108,10 +104,6 @@ export class Database {
 
   async findChannelById(channelId: string): Promise<ChannelRecord> {
     return await this.channels.findOne<ChannelRecord>({ channelId: channelId });
-  }
-
-  async findChannelByCreatorToken(token: string): Promise<ChannelRecord> {
-    return await this.channels.findOne<ChannelRecord>({ creatorToken: token });
   }
 
   async findUpdatedChannels(lastUpdatedSince: number): Promise<ChannelRecord[]> {
