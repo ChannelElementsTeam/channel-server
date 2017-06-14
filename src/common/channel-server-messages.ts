@@ -63,6 +63,7 @@ export interface ShareResponse {
 export interface UnauthenticatedShareCodeResponse {
   providerUrl: string;
   registrationUrl: string;
+  details: any;
 }
 
 export interface ChannelCreateRequest {

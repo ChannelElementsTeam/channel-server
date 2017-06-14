@@ -212,9 +212,10 @@ export class ChannelServer implements TransportEventHandler {
     if (!user) {
       const reply: UnauthenticatedShareCodeResponse = {
         providerUrl: this.providerUrl,
-        registrationUrl: this.getServicesList().registrationUrl
+        registrationUrl: this.getServicesList().registrationUrl,
+        details: invitation.details
       };
-      response.status(401).json(reply);
+      response.status(202).json(reply);
       console.log("ChannelServer: invitation fetched without credentials", shareId, invitation.channelId);
       return;
     }

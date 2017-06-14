@@ -341,7 +341,7 @@ export class ClientTester {
           console.log("TestClient: Share code fetched", data);
           client.channelResponse = data as GetChannelResponse;
           resolve();
-        } else if (shareInfoResponse.statusCode === 401) {
+        } else if (shareInfoResponse.statusCode === 202) {
           console.log("TestClient: Share code fetched", data);
           client.shareCodeResponse = data as UnauthenticatedShareCodeResponse;
           resolve();
