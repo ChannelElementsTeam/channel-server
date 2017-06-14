@@ -7,6 +7,7 @@ import { ControlChannelMessage, ChannelMessageUtils, MessageInfo } from "./commo
 
 export class TransportServer {
   private expressWs: any;
+  private lastChannelCheck = Date.now();
   private wsapp: ExpressWithChannelSockets;
   private controller: TransportEventHandler;
   private socketsById: { [socketId: string]: ChannelSocket } = {};
@@ -48,11 +49,19 @@ export class TransportServer {
         const directive = await this.controller.handleReceivedMessage(messageInfo.info, socketId);
         for (const targetSocketId of directive.forwardMessageToSockets) {
           const socket = this.socketsById[targetSocketId];
-          socket.send(message);
+          try {
+            socket.send(message);
+          } catch (err) {
+            console.warn("Transport: Failure trying to send on socket", socketId, err);
+          }
         }
         for (const delivery of directive.deliverControlMessages) {
           const socket = this.socketsById[delivery.socketId];
-          socket.send(ChannelMessageUtils.serializeControlMessage(delivery.controlMessage.requestId, delivery.controlMessage.type, delivery.controlMessage.details));
+          try {
+            socket.send(ChannelMessageUtils.serializeControlMessage(delivery.controlMessage.requestId, delivery.controlMessage.type, delivery.controlMessage.details));
+          } catch (err) {
+            console.warn("Transport: Failure trying to send control message on socket", socketId, err);
+          }
         }
       } else {
         console.warn("Transport: received invalid message on socket", socketId);
@@ -71,7 +80,12 @@ export class TransportServer {
   async deliverMessage(message: Uint8Array, socketId: string): Promise<boolean> {
     const socket = this.socketsById[socketId];
     if (socket) {
-      socket.send(message);
+      try {
+        socket.send(message);
+      } catch (err) {
+        console.warn("Transport: Failure trying to deliver message on socket", socketId, err);
+        return false;
+      }
       return true;
     } else {
       console.error("Transport: no such socket for control message delivery");
@@ -88,7 +102,6 @@ export class TransportServer {
       this.socketsById[socketId].close();
     }
   }
-
 }
 
 interface ChannelSocket {

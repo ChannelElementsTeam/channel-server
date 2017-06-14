@@ -92,6 +92,10 @@ export interface GetChannelResponse {
   lastUpdated: number;
 }
 
+export interface ChannelDeleteResponseDetails {
+  channelId: string;
+}
+
 export interface ChannelSummary {
   channelId: string;
   channelUrl: string;
@@ -164,6 +168,7 @@ export interface PingRequestDetails {
 export interface ErrorDetails {
   statusCode: number;
   errorMessage: string;
+  channelId?: string;
 }
 
 export interface RateLimitDetails {
@@ -185,6 +190,10 @@ export interface LeaveNotificationDetails {
   permanently: boolean;
 }
 
+export interface ChannelDeletedNotificationDetails {
+  channelId: string;
+}
+
 export interface ControlMessagePayload {
   jsonMessage: ControlChannelMessage;
   binaryPortion?: Uint8Array;
@@ -199,7 +208,7 @@ export interface ChannelOptions {
   maxPayloadSize?: number;
   maxMessageRate?: number;
   maxDataRate?: number;
-  mode?: string; // many-to-many, one-to-many, many-to-one
+  topology?: string; // many-to-many, one-to-many, many-to-one
 }
 
 export class ChannelMessageUtils {
