@@ -9,18 +9,19 @@ import * as url from "url";
 const RestClient = require('node-rest-client').Client;
 const basic = require('basic-authorization-header');
 
-interface PostData {
+interface PostArgs {
   data: any;
   headers: { [name: string]: string };
 }
-interface GetArgs {
+interface RestArgs {
   headers: { [name: string]: string };
 }
 interface IRestClient {
   get(url: string, callback: (data: any, response: Response) => void): void;
 
-  get(url: string, args: GetArgs, callback: (data: any, response: Response) => void): void;
-  post(url: string, args: PostData, callback: (data: any, response: Response) => void): void;
+  get(url: string, args: RestArgs, callback: (data: any, response: Response) => void): void;
+  post(url: string, args: PostArgs, callback: (data: any, response: Response) => void): void;
+  delete(url: string, args: RestArgs, callback: (data: any, response: Response) => void): void;
 }
 
 class TestClient {
@@ -87,6 +88,9 @@ export class ClientTester {
     });
     app.get('/d/test/leave', (request: Request, response: Response) => {
       void this.handleLeave(request, response);
+    });
+    app.get('/d/test/delete', (request: Request, response: Response) => {
+      void this.handleDelete(request, response);
     });
   }
 
@@ -164,11 +168,26 @@ export class ClientTester {
     response.end();
   }
 
+  private async handleDelete(request: Request, response: Response): Promise<void> {
+    const id = request.query.id;
+    if (!id) {
+      response.status(400).send("Missing id param");
+      return;
+    }
+    const client = this.clientsById[id];
+    if (!client) {
+      response.status(404).send("No such client");
+      return;
+    }
+    await this.deleteChannel(client);
+    response.end();
+  }
+
   private async register(client: TestClient, name: string, registerUrl: string): Promise<void> {
     const registrationRequest: RegistrationRequest = {
       identity: { name: name }
     };
-    const args: PostData = {
+    const args: PostArgs = {
       data: registrationRequest,
       headers: { "Content-Type": "application/json" }
     };
@@ -192,7 +211,7 @@ export class ClientTester {
       options: null,
       details: {}
     };
-    const args: PostData = {
+    const args: PostArgs = {
       data: createRequest,
       headers: {
         Authorization: basic(client.registrationResponse.id, client.registrationResponse.token),
@@ -286,7 +305,7 @@ export class ClientTester {
     const shareRequest: ShareRequest = {
       details: { name: name, sharing: true }
     };
-    const args: PostData = {
+    const args: PostArgs = {
       data: shareRequest,
       headers: {
         Authorization: basic(client.registrationResponse.id, client.registrationResponse.token),
@@ -325,7 +344,7 @@ export class ClientTester {
 
   private async getChannel(client: TestClient, channelUrl: string): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      const args: GetArgs = {
+      const args: RestArgs = {
         headers: {
           Authorization: basic(client.registrationResponse.id, client.registrationResponse.token)
         }
@@ -345,7 +364,7 @@ export class ClientTester {
 
   private async listChannels(client: TestClient): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      const args: GetArgs = {
+      const args: RestArgs = {
         headers: {
           Authorization: basic(client.registrationResponse.id, client.registrationResponse.token)
         }
@@ -391,6 +410,25 @@ export class ClientTester {
           innerResolve();
           resolve();
         });
+      });
+    });
+  }
+
+  private deleteChannel(client: TestClient): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const args: RestArgs = {
+        headers: {
+          Authorization: basic(client.registrationResponse.id, client.registrationResponse.token)
+        }
+      };
+      this.restClient.delete(client.channelResponse.channelUrl, args, (data: any, channelResponse: Response) => {
+        if (channelResponse.statusCode === 200) {
+          console.log("TestClient: Channel deleted", JSON.stringify(data));
+          resolve();
+        } else {
+          console.error("Failed", channelResponse.statusCode, new TextDecoder('utf-8').decode(data));
+          reject();
+        }
       });
     });
   }

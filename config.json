@@ -14,8 +14,8 @@
     }
   },
   "ping": {
-    "interval": 30000,
-    "timeout": 15000
+    "interval": 300000,
+    "timeout": 150000
   },
   "ssl": {
     "ca": "/usr/local/etc/certs/caBundle",
