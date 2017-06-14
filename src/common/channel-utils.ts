@@ -1,4 +1,4 @@
-import { ControlMessagePayload, ControlChannelMessage } from "./interfaces/channel-server-interfaces";
+import { ControlMessagePayload, ControlChannelMessage } from "./channel-server-interfaces";
 import { TextDecoder, TextEncoder } from 'text-encoding';
 
 export class ChannelUtils {

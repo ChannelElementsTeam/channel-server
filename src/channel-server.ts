@@ -10,9 +10,9 @@ import { TextDecoder, TextEncoder } from 'text-encoding';
 import { TransportServer, TransportEventHandler, MessageHandlingDirective, ControlMessageDirective } from './transport-server';
 import { db } from "./db";
 import { UserRecord, ChannelMemberRecord, ChannelRecord, MessageRecord } from './interfaces/db-records';
-import { RegistrationResponse, ChannelServerResponse, RegistrationRequest, ChannelCreateRequest, GetChannelResponse, ChannelMemberInfo, ControlChannelMessage, ChannelParticipantInfo, AccountResponse, AccountUpdateRequest, JoinRequestDetails, JoinResponseDetails, JoinNotificationDetails, ErrorDetails, ShareRequest, ShareResponse, ShareCodeResponse, LeaveNotificationDetails, HistoryRequestDetails, HistoryResponseDetails, ControlMessagePayload, ProviderServiceList, ChannelListResponse, ChannelSummary, LeaveRequestDetails, ChannelOptions, HistoryMessageDetails } from './interfaces/channel-server-interfaces';
-import { ChannelUtils, MessageInfo } from "./channel-utils";
+import { RegistrationResponse, ChannelServerResponse, RegistrationRequest, ChannelCreateRequest, GetChannelResponse, ChannelMemberInfo, ControlChannelMessage, ChannelParticipantInfo, AccountResponse, AccountUpdateRequest, JoinRequestDetails, JoinResponseDetails, JoinNotificationDetails, ErrorDetails, ShareRequest, ShareResponse, ShareCodeResponse, LeaveNotificationDetails, HistoryRequestDetails, HistoryResponseDetails, ControlMessagePayload, ProviderServiceList, ChannelListResponse, ChannelSummary, LeaveRequestDetails, ChannelOptions, HistoryMessageDetails } from './common/channel-server-interfaces';
 import { Utils } from "./utils";
+import { ChannelUtils, MessageInfo } from "./common/channel-utils";
 
 const TOKEN_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const MAX_HISTORY_BUFFERED_SIZE = 50000;

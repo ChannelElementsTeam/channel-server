@@ -13,7 +13,7 @@ import * as url from 'url';
 import { configuration } from "./configuration";
 import { db } from './db';
 import { ChannelServer } from './channel-server';
-import { ChannelServerResponse } from "./interfaces/channel-server-interfaces";
+import { ChannelServerResponse } from "./common/channel-server-interfaces";
 
 import { clientTester } from './testing/client-test';
 

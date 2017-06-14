@@ -3,8 +3,8 @@ import { Request, Response } from 'express';
 import * as net from 'net';
 
 import { ChannelMemberRecord, UserRecord } from "./interfaces/db-records";
-import { ControlChannelMessage } from "./interfaces/channel-server-interfaces";
-import { ChannelUtils, MessageInfo } from "./channel-utils";
+import { ControlChannelMessage } from "./common/channel-server-interfaces";
+import { ChannelUtils, MessageInfo } from "./common/channel-utils";
 
 export class TransportServer {
   private expressWs: any;

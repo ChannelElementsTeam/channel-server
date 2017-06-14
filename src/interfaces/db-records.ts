@@ -1,5 +1,5 @@
 
-import { ChannelOptions } from "./channel-server-interfaces";
+import { ChannelOptions } from "../common/channel-server-interfaces";
 
 export interface UserRecord {
   id: string;
