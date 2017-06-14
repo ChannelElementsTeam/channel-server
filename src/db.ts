@@ -159,7 +159,7 @@ export class Database {
     return await this.channelMembers.find<ChannelMemberRecord>({ channelId: channelId, status: status }).sort({ userId: 1 }).toArray();
   }
 
-  async countChannelMembersByUserId(userId: string, status: string, lastActiveBefore = 0, limit = 100): Promise<number> {
+  async countChannelMembersByUserId(userId: string, status: string, lastActiveBefore = 0, limit = 50): Promise<number> {
     const query: any = {
       userId: userId,
       status: status,
@@ -170,7 +170,7 @@ export class Database {
     return await this.channelMembers.count(query);
   }
 
-  async findChannelMembersByUserId(userId: string, status: string, lastActiveBefore = 0, limit = 100): Promise<ChannelMemberRecord[]> {
+  async findChannelMembersByUserId(userId: string, status: string, lastActiveBefore = 0, limit = 50): Promise<ChannelMemberRecord[]> {
     const query: any = {
       userId: userId,
       status: status,
