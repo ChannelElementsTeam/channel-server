@@ -1,5 +1,5 @@
 import * as express from "express";
-import { Express, Request, Response } from 'express';
+import { Express, Request, Response, NextFunction } from 'express';
 import * as net from 'net';
 import * as http from 'http';
 import * as https from 'https';
@@ -118,6 +118,19 @@ class ChannelElementsServer {
       extended: true
     }));
     this.app.use(cookieParser());
+
+    this.app.use((req: Request, res: Response, next: NextFunction) => {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+      if (req.method.toLowerCase() === "options") {
+        res.setHeader("Access-Control-Allow-Methods", "POST, GET, DELETE, OPTIONS");
+        const requestedHeaders = req.header("Access-Control-Request-Headers");
+        if (requestedHeaders) {
+          res.setHeader("Access-Control-Allow-Headers", requestedHeaders);
+        }
+      }
+      next();
+    });
 
     this.app.use('/v' + VERSION, express.static(path.join(__dirname, '../public'), { maxAge: 1000 * 60 * 60 * 24 * 7 }));
     this.app.use('/s', express.static(path.join(__dirname, "../static"), { maxAge: 1000 * 60 * 60 * 24 * 7 }));
