@@ -208,7 +208,7 @@ export interface ChannelOptions {
   maxPayloadSize?: number;
   maxMessageRate?: number;
   maxDataRate?: number;
-  mode?: string; // many-to-many, one-to-many, many-to-one
+  topology?: string; // many-to-many, one-to-many, many-to-one
 }
 
 export class ChannelMessageUtils {

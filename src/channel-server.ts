@@ -417,7 +417,7 @@ export class ChannelServer implements TransportEventHandler {
       socket.channelIds.splice(socket.channelIds.indexOf(channel.channelId), 1);
     }
     let count = 0;
-    if (channel.options.mode === 'many-to-many') {
+    if (channel.options.topology === 'many-to-many') {
       for (const code of Object.keys(channel.participantsByCode)) {
         const p = channel.participantsByCode[code];
         const notificationDetails: LeaveNotificationDetails = {
@@ -475,7 +475,7 @@ export class ChannelServer implements TransportEventHandler {
       result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 403, "You have not been assigned this sender code on that channel", channelId));
       return result;  // sending with illegal sender code
     }
-    if (channelInfo.options.mode === 'one-to-many' && socket.userId !== channelInfo.creatorUserId) {
+    if (channelInfo.options.topology === 'one-to-many' && socket.userId !== channelInfo.creatorUserId) {
       result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 403, "This is a one-to-many channel.  Only the creator is allowed to send messages.", channelId));
       return result;
     }
@@ -485,7 +485,7 @@ export class ChannelServer implements TransportEventHandler {
     await this.updateChannelMemberActive(channelId, socket.userId);
     for (const code of Object.keys(channelInfo.participantsByCode)) {
       const p = channelInfo.participantsByCode[code];
-      if (channelInfo.options.mode === 'many-to-one' && p.userId !== channelInfo.creatorUserId && participant.userId !== channelInfo.creatorUserId) {
+      if (channelInfo.options.topology === 'many-to-one' && p.userId !== channelInfo.creatorUserId && participant.userId !== channelInfo.creatorUserId) {
         continue;
       }
       const sids = this.socketIdsByUserId[p.userId];
@@ -634,7 +634,7 @@ export class ChannelServer implements TransportEventHandler {
 
     let notificationCount = 0;
     // Now we also need to tell all of the other participants about the new participant, if many-to-many
-    if (channelInfo.options.mode === 'many-to-many') {
+    if (channelInfo.options.topology === 'many-to-many') {
       for (const code of Object.keys(channelInfo.participantsByCode)) {
         const p = channelInfo.participantsByCode[code];
         if (p.socketId !== socket.socketId) {
@@ -821,7 +821,7 @@ export class ChannelServer implements TransportEventHandler {
     options.maxMessageRate = typeof options.maxMessageRate === 'undefined' ? 100 : options.maxMessageRate;
     options.maxParticipants = typeof options.maxParticipants === 'undefined' ? 1000 : options.maxParticipants;
     options.maxPayloadSize = typeof options.maxPayloadSize === 'undefined' ? 65535 : options.maxPayloadSize;
-    options.mode = typeof options.mode === 'undefined' ? 'many-to-many' : options.mode;
+    options.topology = typeof options.topology === 'undefined' ? 'many-to-many' : options.topology;
     return options;
   }
 
