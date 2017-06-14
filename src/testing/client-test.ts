@@ -1,10 +1,10 @@
 import * as express from "express";
 import { Express, Request, Response } from 'express';
 import { configuration } from '../configuration';
-import { RegistrationRequest, RegistrationResponse, ChannelCreateRequest, ControlChannelMessage, JoinRequestDetails, ShareResponse, ShareCodeResponse, GetChannelResponse, JoinResponseDetails, ShareRequest, HistoryRequestDetails, HistoryResponseDetails, ChannelListResponse, LeaveRequestDetails } from '../common/channel-server-messages';
+import { RegistrationRequest, RegistrationResponse, ChannelCreateRequest, ControlChannelMessage, JoinRequestDetails, ShareResponse, GetChannelResponse, JoinResponseDetails, ShareRequest, HistoryRequestDetails, HistoryResponseDetails, ChannelListResponse, LeaveRequestDetails } from '../common/channel-server-messages';
 import { client as WebSocketClient, connection, IMessage } from 'websocket';
 import { TextDecoder, TextEncoder } from 'text-encoding';
-import { ChannelMessageUtils, MessageInfo } from "../common/channel-server-messages";
+import { ChannelMessageUtils, MessageInfo, UnauthenticatedShareCodeResponse } from "../common/channel-server-messages";
 import * as url from "url";
 const RestClient = require('node-rest-client').Client;
 const basic = require('basic-authorization-header');
@@ -33,7 +33,7 @@ class TestClient {
   channelListResponse?: ChannelListResponse;
   requestIndex = 1;
   shareResponse?: ShareResponse;
-  shareCodeResponse?: ShareCodeResponse;
+  shareCodeResponse?: UnauthenticatedShareCodeResponse | GetChannelResponse;
   joinResponseDetails?: JoinResponseDetails;
 
   constructor(id: string) {
@@ -127,9 +127,9 @@ export class ClientTester {
     }
     const client = new TestClient(id);
     this.clientsById[id] = client;
-    await this.getShare(client, from);
-    await this.register(client, name, client.shareCodeResponse.registrationUrl);
-    await this.getChannel(client, client.shareCodeResponse.channelUrl);
+    await this.getShare(client, from);  // first time without credentials
+    await this.register(client, name, (client.shareCodeResponse as UnauthenticatedShareCodeResponse).registrationUrl);
+    await this.getShare(client, from); // this time with credentials
     await this.openSocket(client);
     await this.joinChannel(client, name);
     await this.requestHistory(client);
@@ -303,6 +303,7 @@ export class ClientTester {
 
   private async shareChannel(client: TestClient, name: string): Promise<void> {
     const shareRequest: ShareRequest = {
+      channelId: client.channelResponse.channelId,
       details: { name: name, sharing: true }
     };
     const args: PostArgs = {
@@ -313,14 +314,14 @@ export class ClientTester {
       }
     };
     return new Promise<void>((resolve, reject) => {
-      this.restClient.post(client.channelResponse.sharingUrl, args, (data: any, createResponse: Response) => {
+      this.restClient.post(client.registrationResponse.services.shareChannelUrl, args, (data: any, createResponse: Response) => {
         if (createResponse.statusCode === 200) {
           console.log("TestClient: Share code created", data);
           client.shareResponse = data as ShareResponse;
           resolve();
         } else {
           console.error("Failed", createResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject();
+          reject("Share failed");
         }
       });
     });
@@ -329,14 +330,24 @@ export class ClientTester {
   private async getShare(client: TestClient, from: string): Promise<void> {
     const shareResponse = this.clientsById[from].shareResponse;
     return new Promise<void>((resolve, reject) => {
-      this.restClient.get(shareResponse.shareCodeUrl, (data: any, shareInfoResponse: Response) => {
+      const args: RestArgs = {
+        headers: {}
+      };
+      if (client.registrationResponse) {
+        args.headers.Authorization = basic(client.registrationResponse.id, client.registrationResponse.token);
+      }
+      this.restClient.get(shareResponse.shareCodeUrl, args, (data: any, shareInfoResponse: Response) => {
         if (shareInfoResponse.statusCode === 200) {
           console.log("TestClient: Share code fetched", data);
-          client.shareCodeResponse = data as ShareCodeResponse;
+          client.channelResponse = data as GetChannelResponse;
+          resolve();
+        } else if (shareInfoResponse.statusCode === 401) {
+          console.log("TestClient: Share code fetched", data);
+          client.shareCodeResponse = data as UnauthenticatedShareCodeResponse;
           resolve();
         } else {
-          console.error("Failed", shareInfoResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject();
+          console.warn("Failed", shareInfoResponse.statusCode, new TextDecoder('utf-8').decode(data));
+          reject("Failed to Get share code");
         }
       });
     });
@@ -356,7 +367,7 @@ export class ClientTester {
           resolve();
         } else {
           console.error("Failed", channelResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject();
+          reject("Get channel failed");
         }
       });
     });
@@ -376,7 +387,7 @@ export class ClientTester {
           resolve();
         } else {
           console.error("Failed", channelResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject();
+          reject("List channels failed");
         }
       });
     });
@@ -427,7 +438,7 @@ export class ClientTester {
           resolve();
         } else {
           console.error("Failed", channelResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject();
+          reject("Delete channel failed");
         }
       });
     });

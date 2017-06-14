@@ -44,6 +44,7 @@ export interface ProviderServiceList {
   accountUrl: string;
   createChannelUrl: string;
   channelListUrl: string;
+  shareChannelUrl: string;
 }
 
 export interface AccountUpdateRequest {
@@ -51,6 +52,7 @@ export interface AccountUpdateRequest {
 }
 
 export interface ShareRequest {
+  channelId: string;
   details: any;
 }
 
@@ -58,12 +60,9 @@ export interface ShareResponse {
   shareCodeUrl: string;
 }
 
-export interface ShareCodeResponse {
+export interface UnauthenticatedShareCodeResponse {
   providerUrl: string;
   registrationUrl: string;
-  channelId: string;
-  channelUrl: string;
-  details: any;
 }
 
 export interface ChannelCreateRequest {
@@ -84,7 +83,6 @@ export interface GetChannelResponse {
   transportUrl: string;
   registerUrl: string;
   channelUrl: string;
-  sharingUrl: string;
   options: ChannelOptions;
   details: any;
   isCreator: boolean;
@@ -96,14 +94,6 @@ export interface GetChannelResponse {
 
 export interface ChannelDeleteResponseDetails {
   channelId: string;
-}
-
-export interface ChannelSummary {
-  channelId: string;
-  channelUrl: string;
-  isCreator: boolean;
-  lastActive: number;
-  details?: any;
 }
 
 export interface ChannelListResponse {

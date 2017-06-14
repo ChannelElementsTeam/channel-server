@@ -10,9 +10,9 @@ import { TextDecoder, TextEncoder } from 'text-encoding';
 import { TransportServer, TransportEventHandler, MessageHandlingDirective, ControlMessageDirective } from './transport-server';
 import { db } from "./db";
 import { UserRecord, ChannelMemberRecord, ChannelRecord, MessageRecord } from './interfaces/db-records';
-import { RegistrationResponse, ChannelServerResponse, RegistrationRequest, ChannelCreateRequest, GetChannelResponse, ChannelMemberInfo, ControlChannelMessage, ChannelParticipantInfo, AccountResponse, AccountUpdateRequest, JoinRequestDetails, JoinResponseDetails, JoinNotificationDetails, ErrorDetails, ShareRequest, ShareResponse, ShareCodeResponse, LeaveNotificationDetails, HistoryRequestDetails, HistoryResponseDetails, ControlMessagePayload, ProviderServiceList, ChannelListResponse, ChannelSummary, LeaveRequestDetails, ChannelOptions, HistoryMessageDetails } from './common/channel-server-messages';
+import { RegistrationResponse, ChannelServerResponse, RegistrationRequest, ChannelCreateRequest, GetChannelResponse, ChannelMemberInfo, ControlChannelMessage, ChannelParticipantInfo, AccountResponse, AccountUpdateRequest, JoinRequestDetails, JoinResponseDetails, JoinNotificationDetails, ErrorDetails, ShareRequest, ShareResponse, LeaveNotificationDetails, HistoryRequestDetails, HistoryResponseDetails, ControlMessagePayload, ProviderServiceList, ChannelListResponse, LeaveRequestDetails, ChannelOptions, HistoryMessageDetails } from './common/channel-server-messages';
 import { Utils } from "./utils";
-import { MessageInfo, ChannelMessageUtils, PingRequestDetails, ChannelDeleteResponseDetails, ChannelDeletedNotificationDetails } from "./common/channel-server-messages";
+import { MessageInfo, ChannelMessageUtils, PingRequestDetails, ChannelDeleteResponseDetails, ChannelDeletedNotificationDetails, UnauthenticatedShareCodeResponse } from "./common/channel-server-messages";
 
 const TOKEN_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const MAX_HISTORY_BUFFERED_SIZE = 50000;
@@ -26,7 +26,6 @@ export class ChannelServer implements TransportEventHandler {
   private pingInterval: number;
   private pingTimeout: number;
   private lastChannelCheck = Date.now();
-
   private app: express.Application;
   private transport: TransportServer;
 
@@ -60,7 +59,7 @@ export class ChannelServer implements TransportEventHandler {
       }, 1000);
     }
     setInterval(() => {
-      this.processDeletedChannels();
+      void this.processDeletedChannels();
     }, 5000);
   }
 
@@ -74,8 +73,8 @@ export class ChannelServer implements TransportEventHandler {
     this.app.post(restRelativeBaseUrl + '/account', (request: Request, response: Response) => {
       void this.handleUpdateAccount(request, response);
     });
-    this.app.post(restRelativeBaseUrl + '/invite/:cid', (request: Request, response: Response) => {
-      void this.handleCreateInvitation(request, response);
+    this.app.post(restRelativeBaseUrl + '/share', (request: Request, response: Response) => {
+      void this.handleShare(request, response);
     });
     this.app.get(restRelativeBaseUrl + '/invitation/:share', (request: Request, response: Response) => {
       void this.handleGetInvitation(request, response);
@@ -101,7 +100,8 @@ export class ChannelServer implements TransportEventHandler {
       registrationUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/register'),
       accountUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/account'),
       createChannelUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/channels/create'),
-      channelListUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/channels')
+      channelListUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/channels'),
+      shareChannelUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/share')
     };
     return result;
   }
@@ -177,24 +177,27 @@ export class ChannelServer implements TransportEventHandler {
     response.json({});
   }
 
-  private async handleCreateInvitation(request: Request, response: Response): Promise<void> {
+  private async handleShare(request: Request, response: Response): Promise<void> {
     const user = await this.authenticateUser(request, response);
     if (!user) {
-      console.warn("ChannelServer: handleCreateInvitation not authenticated");
+      console.warn("ChannelServer: handleShare not authenticated");
       return;
     }
-    const channelId = request.params.cid;
-    const channelRecord = await db.findChannelById(channelId);
+    const shareRequest = request.body as ShareRequest;
+    if (!shareRequest || !shareRequest.channelId) {
+      response.status(400).send("Invalid request:  missing channelId");
+      return;
+    }
+    const channelRecord = await db.findChannelById(shareRequest.channelId);
     if (!channelRecord) {
       response.status(404).send("No such channel");
       return;
     }
-    const shareRequest = request.body as ShareRequest;
-    const invitation = await db.insertInvitation(this.createId(), user.id, channelId, shareRequest ? shareRequest.details : null);
+    const invitation = await db.insertInvitation(this.createId(), user.id, channelRecord.channelId, shareRequest ? shareRequest.details : null);
     const reply: ShareResponse = {
       shareCodeUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/invitation/' + invitation.id)
     };
-    console.log("ChannelServer: invitation created", user.id, channelId);
+    console.log("ChannelServer: invitation created", user.id, channelRecord.channelId);
     response.json(reply);
   }
 
@@ -205,15 +208,25 @@ export class ChannelServer implements TransportEventHandler {
       response.status(404).send("No such invitation");
       return;
     }
-    const reply: ShareCodeResponse = {
-      providerUrl: this.providerUrl,
-      registrationUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/register'),
-      channelId: invitation.channelId,
-      channelUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/channels/' + invitation.channelId),
-      details: invitation.details
-    };
-    console.log("ChannelServer: invitation fetched", shareId, invitation.channelId);
-    response.json(reply);
+    const user = await this.authenticateUser(request, response);
+    if (!user) {
+      const reply: UnauthenticatedShareCodeResponse = {
+        providerUrl: this.providerUrl,
+        registrationUrl: this.getServicesList().registrationUrl
+      };
+      response.status(401).json(reply);
+      console.log("ChannelServer: invitation fetched without credentials", shareId, invitation.channelId);
+      return;
+    }
+    const channelRecord = await db.findChannelById(invitation.channelId);
+    if (!channelRecord || channelRecord.status !== 'active') {
+      response.status(404).send("The shared channel no longer exists");
+      return;
+    }
+    const participantId = this.createId();
+    await db.insertChannelMember(channelRecord.channelId, participantId, user.id, {}, 'active');
+    await this.handleGetChannelResponse(channelRecord, user, request, response);
+    console.log("ChannelServer: invitation fetched and channel joined", shareId, invitation.channelId);
   }
 
   private async handleCreateChannel(request: Request, response: Response): Promise<void> {
@@ -230,6 +243,21 @@ export class ChannelServer implements TransportEventHandler {
     const channelId = this.createId();
     const options = this.fillAllOptions(channelRequest && channelRequest.options ? channelRequest.options : {});
     const channelRecord = await db.insertChannel(channelId, user.id, transportUrl, options, channelRequest ? channelRequest.details : null, 'active');
+    const now = Date.now();
+    const channelInfo: ChannelInfo = {
+      code: this.allocateChannelCode(),
+      channelId: channelRecord.channelId,
+      participantsByCode: {},
+      participantsById: {},
+      participantsByUserId: {},
+      lastAllocatedCode: 0,
+      options: this.fillAllOptions(channelRecord.options),
+      creatorUserId: user.id
+    };
+    this.channelInfoById[channelRecord.channelId] = channelInfo;
+    this.channelIdByCode[channelInfo.code] = channelRecord.channelId;
+    const participantId = this.createId();
+    await db.insertChannelMember(channelId, participantId, user.id, {}, 'active');
     const reply = await this.handleGetChannelResponse(channelRecord, user, request, response);
     console.log("ChannelServer: channel created", user.id, channelId);
   }
@@ -240,11 +268,17 @@ export class ChannelServer implements TransportEventHandler {
       console.warn("ChannelServer: handleCreateChannel not authenticated");
       return;
     }
+    const channelMember = await db.findChannelMember(request.params.cid, user.id);
+    if (!channelMember || channelMember.status !== 'active') {
+      response.status(403).send("You are not a member of this channel");
+      return;
+    }
     const channelRecord = await db.findChannelById(request.params.cid);
     if (!channelRecord || channelRecord.status !== 'active') {
       response.status(404).send("No such channel");
       return;
     }
+
     const reply = await this.handleGetChannelResponse(channelRecord, user, request, response);
     console.log("ChannelServer: channel fetched", user.id, channelRecord.channelId);
   }
@@ -300,9 +334,8 @@ export class ChannelServer implements TransportEventHandler {
     const reply: GetChannelResponse = {
       channelId: channelRecord.channelId,
       transportUrl: this.transportBaseUrl + this.transport.relativeTransportUrl,
-      registerUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/register'),
+      registerUrl: this.getServicesList().registrationUrl,
       channelUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/channels/' + channelRecord.channelId),
-      sharingUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/invite/' + channelRecord.channelId),
       options: channelRecord.options,
       details: channelRecord.details,
       isCreator: channelRecord.creatorId === user.id,
@@ -346,9 +379,8 @@ export class ChannelServer implements TransportEventHandler {
         const channelDetails: GetChannelResponse = {
           channelId: record.channelId,
           transportUrl: this.transportBaseUrl + this.transport.relativeTransportUrl,
-          registerUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/register'),
+          registerUrl: this.getServicesList().registrationUrl,
           channelUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/channels/' + channelRecord.channelId),
-          sharingUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/invite/' + channelRecord.channelId),
           options: channelRecord.options,
           details: channelRecord.details,
           isCreator: channelRecord.creatorId === user.id,
@@ -917,7 +949,7 @@ export class ChannelServer implements TransportEventHandler {
         this.transport.closeSocket(socket.socketId);
       } else if (socket.isOpen && now - socket.lastPingSent > this.pingInterval) {
         process.nextTick(() => {
-          this.sendPing(socket);
+          void this.sendPing(socket);
         });
       }
     }
