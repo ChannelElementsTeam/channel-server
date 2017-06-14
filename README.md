@@ -15,10 +15,14 @@ To run this reference server,
 
 5. Install typescript:  **npm install -g typescript**
 
-5. Install ts-node:  **npm install -g ts-node**
+6. Install ts-node:  **npm install -g ts-node**
 
 7. Update the **config.json** file in the root folder of this project, if you need something special
 
-8. Run the server:  **ts-node --project ./**
+8. Set the current working directory to the root of this project
+
+9. Get the dependencies:  **npm install**
+
+10. Run the server:  **ts-node --project ./**
 
 Your server should now be running.  You should be able to connect to it with any ChannelElements-compatible client.
