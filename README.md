@@ -15,20 +15,28 @@ To get started:
 
 * Install typescript dependencies
 
-    npm install -g typescript
-    npm install -g ts-node
+```
+npm install -g typescript
+npm install -g ts-node
+```
 
 * From the root folder where you downloaded this project, install other dependencies
 
-    npm install
+```
+npm install
+```
 
 * Run the server
 
-    ts-node --project ./ src/index.ts
+```
+ts-node --project ./ src/index.ts
+```
 
 * Verify that it is running
 
-    curl "http://localhost:31111/channel-elements.json"
+```
+curl "http://localhost:31111/channel-elements.json"
+```
 
 This will return a JSON-encoded structure that describes the server.
 
