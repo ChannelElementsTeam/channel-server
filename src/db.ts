@@ -70,11 +70,11 @@ export class Database {
   }
 
   async findUserById(id: string): Promise<UserRecord> {
-    return await this.users.findOne({ id: id });
+    return await this.users.findOne<UserRecord>({ id: id });
   }
 
   async findUserByToken(token: string): Promise<UserRecord> {
-    return await this.users.findOne({ token: token });
+    return await this.users.findOne<UserRecord>({ token: token });
   }
 
   async updateUserStatus(id: string, status: string): Promise<void> {
@@ -107,11 +107,11 @@ export class Database {
   }
 
   async findChannelById(channelId: string): Promise<ChannelRecord> {
-    return await this.channels.findOne({ channelId: channelId });
+    return await this.channels.findOne<ChannelRecord>({ channelId: channelId });
   }
 
   async findChannelByCreatorToken(token: string): Promise<ChannelRecord> {
-    return await this.channels.findOne({ creatorToken: token });
+    return await this.channels.findOne<ChannelRecord>({ creatorToken: token });
   }
 
   async updateChannelStatus(channelId: string, status: string): Promise<void> {
@@ -134,7 +134,7 @@ export class Database {
   }
 
   async findChannelMember(channelId: string, userId: string): Promise<ChannelMemberRecord> {
-    return await this.channelMembers.findOne({ channelId: channelId, userId: userId });
+    return await this.channelMembers.findOne<ChannelMemberRecord>({ channelId: channelId, userId: userId });
   }
 
   async updateChannelMemberActive(channelId: string, userId: string, status: string, lastActive: number, identity?: any): Promise<void> {
@@ -152,7 +152,7 @@ export class Database {
   }
 
   async findChannelMembers(channelId: string, status: string): Promise<ChannelMemberRecord[]> {
-    return await this.channelMembers.find({ channelId: channelId, status: status }).sort({ userId: 1 }).toArray();
+    return await this.channelMembers.find<ChannelMemberRecord>({ channelId: channelId, status: status }).sort({ userId: 1 }).toArray();
   }
 
   async countChannelMembersByUserId(userId: string, status: string, lastActiveBefore = 0, limit = 100): Promise<number> {
@@ -174,7 +174,7 @@ export class Database {
     if (lastActiveBefore) {
       query.lastActive = { $lte: lastActiveBefore };
     }
-    return await this.channelMembers.find(query).sort({ lastActive: -1 }).limit(limit).toArray();
+    return await this.channelMembers.find<ChannelMemberRecord>(query).sort({ lastActive: -1 }).limit(limit).toArray();
   }
 
   async insertInvitation(id: string, sharedByUserId: string, channelId: string, details: any): Promise<ChannelInvitation> {
@@ -191,7 +191,7 @@ export class Database {
   }
 
   async findInvitationById(id: string): Promise<ChannelInvitation> {
-    return await this.invitations.findOne({ id: id });
+    return await this.invitations.findOne<ChannelInvitation>({ id: id });
   }
 
   async insertMessage(channelId: string, participantId: string, timestamp: number, size: number, contents: Uint8Array): Promise<MessageRecord> {
@@ -220,7 +220,7 @@ export class Database {
       }
       query.timestamp = range;
     }
-    return this.messages.find(query).sort({ timestamp: -1 });
+    return this.messages.find<MessageRecord>(query).sort({ timestamp: -1 });
   }
 
   async countMessages(channelId: string, before: number, after: number): Promise<number> {
