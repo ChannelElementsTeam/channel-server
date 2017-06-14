@@ -3,26 +3,33 @@ This is a complete reference implementation of a Channel Elements service provid
 
 The full details and specifications for the Channel Elements Server can be found in the [Wiki](https://github.com/ChannelElementsTeam/channel-server/wiki).
 
-To run this reference server, 
+This server should be able to run on most systems but is primarily tested on MacOS systems.  
 
-1. Clone or download this project
+It depends on [typescript](https://www.typescriptlang.org/), [npm](https://www.npmjs.com/), [Node.js](https://nodejs.org), and [MongoDb](https://www.mongodb.com).  
 
-2. Download and install [MongoDb](https://www.mongodb.com/download-center#community), or you can update the configuration (config.json) to point to an external Mongo server.
+To get started:
 
-3. Run **mongod** to start Mongo running
+* [Download MongoDB](https://www.mongodb.com/download-center) and run **./mongod** from its **bin** folder.  Alternatively, you can use an existing mongo server in which case you'll need to configure ChannelElements config.json file with the appropriate **mongo** settings.
 
-4. Download and install [NodeJs](https://nodejs.org/en)
+* [Download and install npm and Node](https://www.npmjs.com/get-npm)
 
-5. Install typescript:  **npm install -g typescript**
+* Install typescript dependencies
 
-6. Install ts-node:  **npm install -g ts-node**
+    npm install -g typescript
+    npm install -g ts-node
 
-7. Update the **config.json** file in the root folder of this project, if you need something special
+* From the root folder where you downloaded this project, install other dependencies
 
-8. Set the current working directory to the root of this project
+    npm install
 
-9. Get the dependencies:  **npm install**
+* Run the server
 
-10. Run the server:  **ts-node --project ./**
+    ts-node --project ./ src/index.ts
 
-Your server should now be running.  You should be able to connect to it with any ChannelElements-compatible client.
+* Verify that it is running
+
+    curl "http://localhost:31111/channel-elements.json"
+
+This will return a JSON-encoded structure that describes the server.
+
+You should now be able to connect to this server with any ChannelElements-compatible client.
