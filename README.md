@@ -1,7 +1,7 @@
 # channel-server
 This is a complete reference implementation of a Channel Elements service provider.
 
-The full details and specifications for the Channel Elements Server can be found in the Wiki.
+The full details and specifications for the Channel Elements Server can be found in the [Wiki](https://github.com/ChannelElementsTeam/channel-server/wiki).
 
 To run this reference server, 
 
