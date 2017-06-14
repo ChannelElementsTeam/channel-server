@@ -166,6 +166,11 @@ export interface ErrorDetails {
   errorMessage: string;
 }
 
+export interface RateLimitDetails {
+  channelId: string;
+  options: string[];
+}
+
 export interface JoinNotificationDetails {
   channelId: string;
   participantId: string;
