@@ -13,6 +13,10 @@
       }
     }
   },
+  "ping": {
+    "interval": 30000,
+    "timeout": 15000
+  },
   "ssl": {
     "ca": "/usr/local/etc/certs/caBundle",
     "key": "/usr/local/etc/certs/server.key",
@@ -20,7 +24,6 @@
   },
   "client": {
     "ssl": false,
-    "port": 31111,
-    "pingPongInterval": 0
+    "port": 31111
   }
 }

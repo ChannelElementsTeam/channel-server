@@ -43,7 +43,11 @@ class TestClient {
     let handled = false;
     if (messageInfo.channelCode === 0 && messageInfo.senderCode === 0 && messageInfo.controlMessagePayload) {
       const controlMessage = messageInfo.controlMessagePayload.jsonMessage as ControlChannelMessage;
-      if (controlMessage.requestId) {
+      if (controlMessage.type === 'ping') {
+        const byteArray = ChannelMessageUtils.serializeControlMessage(controlMessage.requestId, 'ping-reply', {});
+        this.conn.sendBytes(new Buffer(byteArray));
+        handled = true;
+      } else if (controlMessage.requestId) {
         const handler = this.requestHandlersById[controlMessage.requestId];
         if (handler) {
           await handler(controlMessage);

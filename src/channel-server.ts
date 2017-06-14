@@ -12,7 +12,7 @@ import { db } from "./db";
 import { UserRecord, ChannelMemberRecord, ChannelRecord, MessageRecord } from './interfaces/db-records';
 import { RegistrationResponse, ChannelServerResponse, RegistrationRequest, ChannelCreateRequest, GetChannelResponse, ChannelMemberInfo, ControlChannelMessage, ChannelParticipantInfo, AccountResponse, AccountUpdateRequest, JoinRequestDetails, JoinResponseDetails, JoinNotificationDetails, ErrorDetails, ShareRequest, ShareResponse, ShareCodeResponse, LeaveNotificationDetails, HistoryRequestDetails, HistoryResponseDetails, ControlMessagePayload, ProviderServiceList, ChannelListResponse, ChannelSummary, LeaveRequestDetails, ChannelOptions, HistoryMessageDetails } from './common/channel-server-messages';
 import { Utils } from "./utils";
-import { MessageInfo, ChannelMessageUtils } from "./common/channel-server-messages";
+import { MessageInfo, ChannelMessageUtils, PingRequestDetails } from "./common/channel-server-messages";
 
 const TOKEN_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const MAX_HISTORY_BUFFERED_SIZE = 50000;
@@ -23,6 +23,8 @@ export class ChannelServer implements TransportEventHandler {
   private restBaseUrl: string;
   private restRelativeBaseUrl: string;
   private transportBaseUrl: string;
+  private pingInterval: number;
+  private pingTimeout: number;
 
   private app: express.Application;
   private transport: TransportServer;
@@ -36,7 +38,7 @@ export class ChannelServer implements TransportEventHandler {
 
   registrationUrl: string;
 
-  constructor(app: express.Application, server: net.Server, providerUrl: string, homeUrl: string, restBaseUrl: string, restRelativeBaseUrl: string, transportBaseUrl: string, relativeTransportUrl: string) {
+  constructor(app: express.Application, server: net.Server, providerUrl: string, homeUrl: string, restBaseUrl: string, restRelativeBaseUrl: string, transportBaseUrl: string, relativeTransportUrl: string, pingInterval: number, pingTimeout: number) {
     this.app = app;
     this.providerUrl = providerUrl;
     this.homeUrl = homeUrl;
@@ -45,10 +47,17 @@ export class ChannelServer implements TransportEventHandler {
     this.transportBaseUrl = transportBaseUrl;
     this.registerHandlers(restRelativeBaseUrl);
     this.transport = new TransportServer(app, server, this, relativeTransportUrl);
+    this.pingInterval = pingInterval;
+    this.pingTimeout = pingTimeout;
   }
 
   start(): void {
     this.transport.start();
+    if (this.pingInterval > 0) {
+      setInterval(() => {
+        this.processPings();
+      }, 1000);
+    }
   }
 
   private registerHandlers(restRelativeBaseUrl: string): void {
@@ -299,11 +308,15 @@ export class ChannelServer implements TransportEventHandler {
       return;
     }
     const socketId = this.createId();
+    const now = Date.now();
     this.socketInfoById[socketId] = {
       socketId: socketId,
       userId: user.id,
       channelIds: [],
-      isOpen: true
+      isOpen: true,
+      lastPingSent: now,
+      lastPingReply: now,
+      pingId: 1
     };
     let socketIds = this.socketIdsByUserId[user.id];
     if (!socketIds) {
@@ -433,7 +446,9 @@ export class ChannelServer implements TransportEventHandler {
   }
 
   private async handleReceivedControlMessage(messageInfo: MessageInfo, socket: SocketInfo): Promise<MessageHandlingDirective> {
-    console.log("ChannelServer: Control message received", socket.userId, socket.socketId, messageInfo.controlMessagePayload ? JSON.stringify(messageInfo.controlMessagePayload.jsonMessage) : null);
+    if (messageInfo.controlMessagePayload && messageInfo.controlMessagePayload.jsonMessage && messageInfo.controlMessagePayload.jsonMessage.type !== 'ping-reply') {
+      console.log("ChannelServer: Control message received", socket.userId, socket.socketId, messageInfo.controlMessagePayload ? JSON.stringify(messageInfo.controlMessagePayload.jsonMessage) : null);
+    }
     // These are messages from the client to the server to perform control functions, such as joining or reconnecting to a channel.
     // The format of all control messages is a JSON-encoded payload.
     const controlRequest = messageInfo.controlMessagePayload.jsonMessage as ControlChannelMessage;
@@ -451,6 +466,10 @@ export class ChannelServer implements TransportEventHandler {
         return await this.handleLeaveRequest(controlRequest, socket);
       case 'history':
         return await this.handleHistoryRequest(controlRequest, socket);
+      case 'ping':
+        return await this.handlePingRequest(controlRequest, socket);
+      case 'ping-reply':
+        return await this.handlePingReply(controlRequest, socket);
       default:
         const result: MessageHandlingDirective = {
           forwardMessageToSockets: [],
@@ -707,6 +726,38 @@ export class ChannelServer implements TransportEventHandler {
     }
   }
 
+  private async handlePingRequest(controlRequest: ControlChannelMessage, socket: SocketInfo): Promise<MessageHandlingDirective> {
+    const result: MessageHandlingDirective = {
+      forwardMessageToSockets: [],
+      deliverControlMessages: []
+    };
+    const requestDetails = controlRequest.details as PingRequestDetails;
+    const response: ControlChannelMessage = {
+      requestId: controlRequest.requestId,
+      type: 'ping-reply',
+      details: {}
+    };
+    const directive: ControlMessageDirective = {
+      controlMessage: response,
+      socketId: socket.socketId
+    };
+    result.deliverControlMessages.push(directive);
+    return result;
+  }
+
+  private async handlePingReply(controlRequest: ControlChannelMessage, socket: SocketInfo): Promise<MessageHandlingDirective> {
+    const result: MessageHandlingDirective = {
+      forwardMessageToSockets: [],
+      deliverControlMessages: []
+    };
+    if (controlRequest.requestId === 'p' + socket.pingId) {
+      socket.lastPingReply = Date.now();
+    } else {
+      console.warn("ChannelServer: received ping-reply with unexpected requestId.  Ignoring", controlRequest.requestId, socket.socketId, socket.userId);
+    }
+    return result;
+  }
+
   private fillAllOptions(options: ChannelOptions): ChannelOptions {
     options.history = typeof options.history === 'undefined' ? true : options.history;
     options.priority = typeof options.priority === 'undefined' ? false : options.priority;
@@ -779,6 +830,31 @@ export class ChannelServer implements TransportEventHandler {
     }
     return result;
   }
+
+  private processPings(): void {
+    const now = Date.now();
+    for (const socketId of Object.keys(this.socketInfoById)) {
+      const socket = this.socketInfoById[socketId];
+      if (socket.isOpen && now - socket.lastPingReply > this.pingTimeout) {
+        console.warn("ChannelServer: Timeout waiting for ping-reply", socket.socketId, socket.userId);
+        this.transport.closeSocket(socket.socketId);
+      } else if (socket.isOpen && now - socket.lastPingSent > this.pingInterval) {
+        process.nextTick(() => {
+          this.sendPing(socket);
+        });
+      }
+    }
+  }
+
+  private async sendPing(socket: SocketInfo): Promise<void> {
+    const details: PingRequestDetails = {
+      interval: this.pingInterval
+    };
+    socket.pingId++;
+    const message = ChannelMessageUtils.serializeControlMessage('p' + socket.pingId, 'ping', details);
+    await this.transport.deliverMessage(message, socket.socketId);
+    socket.lastPingSent = Date.now();
+  }
 }
 
 interface ParticipantInfo {
@@ -809,4 +885,7 @@ interface SocketInfo {
   userId: string;
   channelIds: string[];
   isOpen: boolean;
+  lastPingSent: number;
+  lastPingReply: number;
+  pingId: number;
 }

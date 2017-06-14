@@ -157,6 +157,10 @@ export interface HistoryMessageDetails {
   participantId: string;
 }
 
+export interface PingRequestDetails {
+  interval?: number;
+}
+
 export interface ErrorDetails {
   statusCode: number;
   errorMessage: string;

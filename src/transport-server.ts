@@ -83,6 +83,12 @@ export class TransportServer {
     return this.socketsById[socketId] ? this.socketsById[socketId].bufferedAmount : 0;
   }
 
+  closeSocket(socketId: string): void {
+    if (this.socketsById[socketId]) {
+      this.socketsById[socketId].close();
+    }
+  }
+
 }
 
 interface ChannelSocket {
