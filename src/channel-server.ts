@@ -306,11 +306,12 @@ export class ChannelServer implements TransportEventHandler {
       options: channelRecord.options,
       details: channelRecord.details,
       isCreator: channelRecord.creatorId === user.id,
-      members: [],
+      memberCount: await db.countChannelMembers(channelRecord.channelId, 'active'),
+      recentlyActiveMembers: [],
       created: channelRecord.created,
       lastUpdated: channelRecord.lastUpdated
     };
-    const members = await db.findChannelMembers(channelRecord.channelId, 'active');
+    const members = await db.findChannelMembers(channelRecord.channelId, 'active', 8);
     for (const member of members) {
       const info: ChannelMemberInfo = {
         participantId: member.participantId,
@@ -319,7 +320,7 @@ export class ChannelServer implements TransportEventHandler {
         memberSince: member.added,
         lastActive: member.lastActive,
       };
-      reply.members.push(info);
+      reply.recentlyActiveMembers.push(info);
     }
     response.json(reply);
     return reply;
@@ -332,7 +333,7 @@ export class ChannelServer implements TransportEventHandler {
       return;
     }
     const lastActiveBefore = request.query.before ? Number(request.query.before) : 0;
-    const limit = request.query.limit ? Number(request.query.limit) : 0;
+    const limit = request.query.limit ? Number(request.query.limit) : 50;
     const count = await db.countChannelMembersByUserId(user.id, 'active', lastActiveBefore);
     const memberRecords = await db.findChannelMembersByUserId(user.id, 'active', lastActiveBefore, limit);
     const reply: ChannelListResponse = {
@@ -351,7 +352,8 @@ export class ChannelServer implements TransportEventHandler {
           options: channelRecord.options,
           details: channelRecord.details,
           isCreator: channelRecord.creatorId === user.id,
-          members: [],
+          memberCount: await db.countChannelMembers(channelRecord.channelId, 'active'),
+          recentlyActiveMembers: [],
           created: channelRecord.created,
           lastUpdated: channelRecord.lastUpdated
         };
@@ -364,7 +366,7 @@ export class ChannelServer implements TransportEventHandler {
             memberSince: member.added,
             lastActive: member.lastActive,
           };
-          channelDetails.members.push(info);
+          channelDetails.recentlyActiveMembers.push(info);
         }
         reply.channels.push(channelDetails);
       }

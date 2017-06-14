@@ -88,7 +88,8 @@ export interface GetChannelResponse {
   options: ChannelOptions;
   details: any;
   isCreator: boolean;
-  members: ChannelMemberInfo[];
+  memberCount: number;
+  recentlyActiveMembers: ChannelMemberInfo[];
   created: number;
   lastUpdated: number;
 }
