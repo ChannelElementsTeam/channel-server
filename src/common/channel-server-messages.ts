@@ -1,9 +1,21 @@
 import { TextDecoder, TextEncoder } from 'text-encoding';
 
-// Response to /channelelements.json
+// See https://github.com/ChannelElementsTeam/channel-server/wiki
 export interface ChannelServerResponse {
   protocolVersion: string;  // e.g., "1.0.0":  conforms to which version of the specification
-  implementorVersion: string;  // e.g., "1.0.0"
+  provider: {
+    name: string;
+    logo: string;
+    homepage: string;
+    details: any;
+  };
+  implementation: {
+    name: string;
+    logo: string;
+    homepage: string;
+    version: string;
+    details: any;
+  };
   services: ProviderServiceList;
   implementationDetails: any; // for implementor to provide additional information
 }

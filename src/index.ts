@@ -46,7 +46,21 @@ class ChannelElementsServer {
     this.app.get('/channel-elements.json', (request: Request, response: Response) => {
       const reply: ChannelServerResponse = {
         protocolVersion: "0.1.0",
-        implementorVersion: "0.1.0",
+        provider: {
+          name: "ChannelElements",
+          logo: url.resolve(configuration.get('baseClientUri'), '/s/logo.png'),
+          homepage: configuration.get('baseClientUri'),
+          details: {}
+        },
+        implementation: {
+          name: "Channel Elements Reference Server",
+          logo: url.resolve(configuration.get('baseClientUri'), '/s/logo.png'),
+          homepage: "https://github.com/ChannelElementsTeam/channel-server",
+          version: "0.1.0",
+          details: {
+            comment: "Under construction"
+          }
+        },
         services: this.channelServer.getServicesList(),
         implementationDetails: this.getServerImplementationDetails()
       };
