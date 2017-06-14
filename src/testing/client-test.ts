@@ -1,10 +1,10 @@
 import * as express from "express";
 import { Express, Request, Response } from 'express';
 import { configuration } from '../configuration';
-import { RegistrationRequest, RegistrationResponse, ChannelCreateRequest, ControlChannelMessage, JoinRequestDetails, ShareResponse, ShareCodeResponse, GetChannelResponse, JoinResponseDetails, ShareRequest, HistoryRequestDetails, HistoryResponseDetails, ChannelListResponse, LeaveRequestDetails } from '../common/channel-server-interfaces';
+import { RegistrationRequest, RegistrationResponse, ChannelCreateRequest, ControlChannelMessage, JoinRequestDetails, ShareResponse, ShareCodeResponse, GetChannelResponse, JoinResponseDetails, ShareRequest, HistoryRequestDetails, HistoryResponseDetails, ChannelListResponse, LeaveRequestDetails } from '../common/channel-server-messages';
 import { client as WebSocketClient, connection, IMessage } from 'websocket';
 import { TextDecoder, TextEncoder } from 'text-encoding';
-import { ChannelUtils, MessageInfo } from "../common/channel-utils";
+import { ChannelMessageUtils, MessageInfo } from "../common/channel-server-messages";
 import * as url from "url";
 const RestClient = require('node-rest-client').Client;
 const basic = require('basic-authorization-header');
@@ -224,7 +224,7 @@ export class ClientTester {
         });
         conn.on('message', (message: IMessage) => {
           if (message.type === 'binary') {
-            const messageInfo = ChannelUtils.parseChannelMessage(message.binaryData);
+            const messageInfo = ChannelMessageUtils.parseChannelMessage(message.binaryData);
             void client.handleMessage(messageInfo.info);
           } else {
             console.error('TestClient: Unexpected string-type channel message', message);
@@ -244,7 +244,7 @@ export class ClientTester {
     };
     const requestId = client.requestIndex.toString();
     client.requestIndex++;
-    const byteArray = ChannelUtils.serializeControlMessage(requestId, 'join', details);
+    const byteArray = ChannelMessageUtils.serializeControlMessage(requestId, 'join', details);
     client.conn.sendBytes(new Buffer(byteArray));
     return new Promise<void>((resolve, reject) => {
       client.registerReplyHandler(requestId, (controlMessage: ControlChannelMessage): Promise<void> => {
@@ -265,7 +265,7 @@ export class ClientTester {
     };
     const requestId = client.requestIndex.toString();
     client.requestIndex++;
-    const byteArray = ChannelUtils.serializeControlMessage(requestId, 'history', details);
+    const byteArray = ChannelMessageUtils.serializeControlMessage(requestId, 'history', details);
     client.conn.sendBytes(new Buffer(byteArray));
     return new Promise<void>((resolve, reject) => {
       client.registerReplyHandler(requestId, (controlMessage: ControlChannelMessage): Promise<void> => {
@@ -366,7 +366,7 @@ export class ClientTester {
       history: true,
       rawPayload: new TextEncoder().encode(JSON.stringify({ text: text }))
     };
-    const byteArray = ChannelUtils.serializeChannelMessage(messageInfo, 0, 0);
+    const byteArray = ChannelMessageUtils.serializeChannelMessage(messageInfo, 0, 0);
     client.conn.sendBytes(new Buffer(byteArray));
   }
 
@@ -377,7 +377,7 @@ export class ClientTester {
     };
     const requestId = client.requestIndex.toString();
     client.requestIndex++;
-    const byteArray = ChannelUtils.serializeControlMessage(requestId, 'leave', details);
+    const byteArray = ChannelMessageUtils.serializeControlMessage(requestId, 'leave', details);
     client.conn.sendBytes(new Buffer(byteArray));
     return new Promise<void>((resolve, reject) => {
       client.registerReplyHandler(requestId, (controlMessage: ControlChannelMessage): Promise<void> => {

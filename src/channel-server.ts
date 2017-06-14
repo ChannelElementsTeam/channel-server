@@ -10,9 +10,9 @@ import { TextDecoder, TextEncoder } from 'text-encoding';
 import { TransportServer, TransportEventHandler, MessageHandlingDirective, ControlMessageDirective } from './transport-server';
 import { db } from "./db";
 import { UserRecord, ChannelMemberRecord, ChannelRecord, MessageRecord } from './interfaces/db-records';
-import { RegistrationResponse, ChannelServerResponse, RegistrationRequest, ChannelCreateRequest, GetChannelResponse, ChannelMemberInfo, ControlChannelMessage, ChannelParticipantInfo, AccountResponse, AccountUpdateRequest, JoinRequestDetails, JoinResponseDetails, JoinNotificationDetails, ErrorDetails, ShareRequest, ShareResponse, ShareCodeResponse, LeaveNotificationDetails, HistoryRequestDetails, HistoryResponseDetails, ControlMessagePayload, ProviderServiceList, ChannelListResponse, ChannelSummary, LeaveRequestDetails, ChannelOptions, HistoryMessageDetails } from './common/channel-server-interfaces';
+import { RegistrationResponse, ChannelServerResponse, RegistrationRequest, ChannelCreateRequest, GetChannelResponse, ChannelMemberInfo, ControlChannelMessage, ChannelParticipantInfo, AccountResponse, AccountUpdateRequest, JoinRequestDetails, JoinResponseDetails, JoinNotificationDetails, ErrorDetails, ShareRequest, ShareResponse, ShareCodeResponse, LeaveNotificationDetails, HistoryRequestDetails, HistoryResponseDetails, ControlMessagePayload, ProviderServiceList, ChannelListResponse, ChannelSummary, LeaveRequestDetails, ChannelOptions, HistoryMessageDetails } from './common/channel-server-messages';
 import { Utils } from "./utils";
-import { ChannelUtils, MessageInfo } from "./common/channel-utils";
+import { MessageInfo, ChannelMessageUtils } from "./common/channel-server-messages";
 
 const TOKEN_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const MAX_HISTORY_BUFFERED_SIZE = 50000;
@@ -359,7 +359,7 @@ export class ChannelServer implements TransportEventHandler {
           participantCode: participant.code,
           permanently: permanently
         };
-        const message = ChannelUtils.serializeControlMessage(null, 'leave-notification', notificationDetails);
+        const message = ChannelMessageUtils.serializeControlMessage(null, 'leave-notification', notificationDetails);
         await this.transport.deliverMessage(message, p.socketId);
         count++;
         console.log("ChannelServer: Sending leave-notification", p.userId, p.socketId, notificationDetails.channelId, notificationDetails.participantId);
@@ -695,7 +695,7 @@ export class ChannelServer implements TransportEventHandler {
         channelId: channelRecord.channelId,
         participantId: message.participantId
       };
-      const historyMessage = ChannelUtils.serializeControlMessage(null, 'history-message', details, messageBytes);
+      const historyMessage = ChannelMessageUtils.serializeControlMessage(null, 'history-message', details, messageBytes);
       if (!await this.transport.deliverMessage(historyMessage, socket.socketId)) {
         break;
       }

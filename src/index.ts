@@ -13,9 +13,9 @@ import * as url from 'url';
 import { configuration } from "./configuration";
 import { db } from './db';
 import { ChannelServer } from './channel-server';
-import { ChannelServerResponse } from "./common/channel-server-interfaces";
 
 import { clientTester } from './testing/client-test';
+import { ChannelServerResponse } from "./common/channel-server-messages";
 
 const VERSION = 1;
 const DYNAMIC_BASE = '/d';
@@ -32,7 +32,7 @@ class ChannelElementsServer {
     await this.setupConfiguration();
     await db.initialize();
     await this.setupExpress();
-    this.channelServer = new ChannelServer(this.app, this.server, url.resolve(configuration.get('baseClientUri'), "/channelelements.json"), configuration.get('baseClientUri'), configuration.get('baseClientUri'), DYNAMIC_BASE, configuration.get('baseTransportUri'), '/transport/s1');
+    this.channelServer = new ChannelServer(this.app, this.server, url.resolve(configuration.get('baseClientUri'), "/channel-elements.json"), configuration.get('baseClientUri'), configuration.get('baseClientUri'), DYNAMIC_BASE, configuration.get('baseTransportUri'), '/transport/s1');
     await this.channelServer.start();
     await this.setupServerPing();
     this.started = Date.now();
@@ -43,7 +43,7 @@ class ChannelElementsServer {
   }
 
   private setupChannelServerResponse() {
-    this.app.get('/channelelements.json', (request: Request, response: Response) => {
+    this.app.get('/channel-elements.json', (request: Request, response: Response) => {
       const reply: ChannelServerResponse = {
         protocolVersion: "0.1.0",
         implementorVersion: "0.1.0",

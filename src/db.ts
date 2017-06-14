@@ -2,7 +2,7 @@ import { Cursor, MongoClient, Db, Collection } from "mongodb";
 
 import { ChannelRecord, ChannelMemberRecord, UserRecord, ChannelInvitation, MessageRecord } from "./interfaces/db-records";
 import { configuration } from "./configuration";
-import { ChannelOptions } from "./common/channel-server-interfaces";
+import { ChannelOptions } from "./common/channel-server-messages";
 
 export class Database {
   private db: Db;

@@ -3,8 +3,7 @@ import { Request, Response } from 'express';
 import * as net from 'net';
 
 import { ChannelMemberRecord, UserRecord } from "./interfaces/db-records";
-import { ControlChannelMessage } from "./common/channel-server-interfaces";
-import { ChannelUtils, MessageInfo } from "./common/channel-utils";
+import { ControlChannelMessage, ChannelMessageUtils, MessageInfo } from "./common/channel-server-messages";
 
 export class TransportServer {
   private expressWs: any;
@@ -44,7 +43,7 @@ export class TransportServer {
 
   private async handleChannelSocketMessage(ws: ChannelSocket, message: Uint8Array | string, socketId: string): Promise<void> {
     if (message instanceof Uint8Array) {
-      const messageInfo = await ChannelUtils.parseChannelMessage(message as Uint8Array);
+      const messageInfo = await ChannelMessageUtils.parseChannelMessage(message as Uint8Array);
       if (messageInfo.valid) {
         const directive = await this.controller.handleReceivedMessage(messageInfo.info, socketId);
         for (const targetSocketId of directive.forwardMessageToSockets) {
@@ -53,7 +52,7 @@ export class TransportServer {
         }
         for (const delivery of directive.deliverControlMessages) {
           const socket = this.socketsById[delivery.socketId];
-          socket.send(ChannelUtils.serializeControlMessage(delivery.controlMessage.requestId, delivery.controlMessage.type, delivery.controlMessage.details));
+          socket.send(ChannelMessageUtils.serializeControlMessage(delivery.controlMessage.requestId, delivery.controlMessage.type, delivery.controlMessage.details));
         }
       } else {
         console.warn("Transport: received invalid message on socket", socketId);
