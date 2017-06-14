@@ -92,6 +92,10 @@ export interface GetChannelResponse {
   lastUpdated: number;
 }
 
+export interface ChannelDeleteResponseDetails {
+  channelId: string;
+}
+
 export interface ChannelSummary {
   channelId: string;
   channelUrl: string;
@@ -164,6 +168,7 @@ export interface PingRequestDetails {
 export interface ErrorDetails {
   statusCode: number;
   errorMessage: string;
+  channelId?: string;
 }
 
 export interface RateLimitDetails {
@@ -183,6 +188,10 @@ export interface LeaveNotificationDetails {
   participantId: string;
   participantCode: number;
   permanently: boolean;
+}
+
+export interface ChannelDeletedNotificationDetails {
+  channelId: string;
 }
 
 export interface ControlMessagePayload {

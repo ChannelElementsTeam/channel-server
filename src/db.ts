@@ -114,8 +114,12 @@ export class Database {
     return await this.channels.findOne<ChannelRecord>({ creatorToken: token });
   }
 
+  async findUpdatedChannels(lastUpdatedSince: number): Promise<ChannelRecord[]> {
+    return await this.channels.find<ChannelRecord>({ lastUpdated: { $gt: lastUpdatedSince } }).toArray();
+  }
+
   async updateChannelStatus(channelId: string, status: string): Promise<void> {
-    await this.channels.update({ channelId: channelId }, { $set: { status: status } });
+    await this.channels.update({ channelId: channelId }, { $set: { status: status, lastUpdated: Date.now() } });
   }
 
   async insertChannelMember(channelId: string, participantId: string, userId: string, participantDetails: any, status: string): Promise<ChannelMemberRecord> {

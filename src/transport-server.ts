@@ -7,6 +7,7 @@ import { ControlChannelMessage, ChannelMessageUtils, MessageInfo } from "./commo
 
 export class TransportServer {
   private expressWs: any;
+  private lastChannelCheck = Date.now();
   private wsapp: ExpressWithChannelSockets;
   private controller: TransportEventHandler;
   private socketsById: { [socketId: string]: ChannelSocket } = {};
@@ -88,7 +89,6 @@ export class TransportServer {
       this.socketsById[socketId].close();
     }
   }
-
 }
 
 interface ChannelSocket {

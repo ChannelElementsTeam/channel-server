@@ -12,7 +12,7 @@ import { db } from "./db";
 import { UserRecord, ChannelMemberRecord, ChannelRecord, MessageRecord } from './interfaces/db-records';
 import { RegistrationResponse, ChannelServerResponse, RegistrationRequest, ChannelCreateRequest, GetChannelResponse, ChannelMemberInfo, ControlChannelMessage, ChannelParticipantInfo, AccountResponse, AccountUpdateRequest, JoinRequestDetails, JoinResponseDetails, JoinNotificationDetails, ErrorDetails, ShareRequest, ShareResponse, ShareCodeResponse, LeaveNotificationDetails, HistoryRequestDetails, HistoryResponseDetails, ControlMessagePayload, ProviderServiceList, ChannelListResponse, ChannelSummary, LeaveRequestDetails, ChannelOptions, HistoryMessageDetails } from './common/channel-server-messages';
 import { Utils } from "./utils";
-import { MessageInfo, ChannelMessageUtils, PingRequestDetails } from "./common/channel-server-messages";
+import { MessageInfo, ChannelMessageUtils, PingRequestDetails, ChannelDeleteResponseDetails, ChannelDeletedNotificationDetails } from "./common/channel-server-messages";
 
 const TOKEN_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const MAX_HISTORY_BUFFERED_SIZE = 50000;
@@ -25,6 +25,7 @@ export class ChannelServer implements TransportEventHandler {
   private transportBaseUrl: string;
   private pingInterval: number;
   private pingTimeout: number;
+  private lastChannelCheck = Date.now();
 
   private app: express.Application;
   private transport: TransportServer;
@@ -58,6 +59,9 @@ export class ChannelServer implements TransportEventHandler {
         this.processPings();
       }, 1000);
     }
+    setInterval(() => {
+      this.processDeletedChannels();
+    }, 5000);
   }
 
   private registerHandlers(restRelativeBaseUrl: string): void {
@@ -81,6 +85,9 @@ export class ChannelServer implements TransportEventHandler {
     });
     this.app.get(restRelativeBaseUrl + '/channels/:cid', (request: Request, response: Response) => {
       void this.handleGetChannel(request, response);
+    });
+    this.app.delete(restRelativeBaseUrl + '/channels/:cid', (request: Request, response: Response) => {
+      void this.handleDeleteChannel(request, response);
     });
     this.app.get(restRelativeBaseUrl + '/channels', (request: Request, response: Response) => {
       void this.handleGetChannelList(request, response);
@@ -240,6 +247,53 @@ export class ChannelServer implements TransportEventHandler {
     }
     const reply = await this.handleGetChannelResponse(channelRecord, user, request, response);
     console.log("ChannelServer: channel fetched", user.id, channelRecord.channelId);
+  }
+
+  private async handleDeleteChannel(request: Request, response: Response): Promise<void> {
+    const user = await this.authenticateUser(request, response);
+    if (!user) {
+      console.warn("ChannelServer: handleCreateChannel not authenticated");
+      return;
+    }
+    const channelRecord = await db.findChannelById(request.params.cid);
+    if (!channelRecord || channelRecord.status !== 'active') {
+      response.status(404).send("No such channel");
+      return;
+    }
+    await db.updateChannelStatus(channelRecord.channelId, 'deleted');
+    const reply: ChannelDeleteResponseDetails = {
+      channelId: channelRecord.channelId
+    };
+    response.json(reply);
+    console.log("ChannelServer: channel deleted", user.id, channelRecord.channelId);
+    void this.processDeletedChannels();
+  }
+
+  private async processDeletedChannels(): Promise<void> {
+    const lastCheck = this.lastChannelCheck;
+    this.lastChannelCheck = Date.now();
+    const updatedChannels = await db.findUpdatedChannels(lastCheck);
+    for (const channelRecord of updatedChannels) {
+      if (channelRecord.status !== 'active') {
+        const channelInfo = this.channelInfoById[channelRecord.channelId];
+        if (channelInfo) {
+          for (const participantId of Object.keys(channelInfo.participantsById)) {
+            const participant = channelInfo.participantsById[participantId];
+            const socket = this.socketInfoById[participant.socketId];
+            const details: ChannelDeletedNotificationDetails = {
+              channelId: channelRecord.channelId
+            };
+            const message = ChannelMessageUtils.serializeControlMessage(null, 'channel-deleted', details);
+            await this.transport.deliverMessage(message, socket.socketId);
+            if (socket.channelIds.indexOf(channelRecord.channelId) >= 0) {
+              socket.channelIds.splice(socket.channelIds.indexOf(channelRecord.channelId), 1);
+            }
+          }
+          delete this.channelInfoById[channelRecord.channelId];
+          delete this.channelIdByCode[channelInfo.code];
+        }
+      }
+    }
   }
 
   private async handleGetChannelResponse(channelRecord: ChannelRecord, user: UserRecord, request: Request, response: Response): Promise<GetChannelResponse> {
@@ -403,26 +457,26 @@ export class ChannelServer implements TransportEventHandler {
     }
     const channelId = this.channelIdByCode[messageInfo.channelCode.toString()];
     if (!channelId) {
-      result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 404, "Unknown channel code"));
+      result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 404, "Unknown channel code", channelId));
       return result;  // sending to an unknown channel
     }
     const index = socket.channelIds.indexOf(channelId);
     if (index < 0) {
-      result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 403, "You have not yet joined this channel, so cannot send to it"));
+      result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 403, "You have not yet joined this channel, so cannot send to it", channelId));
       return result;  // sending on an illegal channel
     }
     const channelInfo = this.channelInfoById[channelId];
     if (!channelInfo) {
-      result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 500, "Server error: channel information missing"));
+      result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 500, "Server error: channel information missing", channelId));
       return result;  // no channel information available for some reason
     }
     const participant = channelInfo.participantsByCode[messageInfo.senderCode.toString()];
     if (!participant || participant.userId !== socket.userId) {
-      result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 403, "You have not been assigned this sender code on that channel"));
+      result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 403, "You have not been assigned this sender code on that channel", channelId));
       return result;  // sending with illegal sender code
     }
     if (channelInfo.options.mode === 'one-to-many' && socket.userId !== channelInfo.creatorUserId) {
-      result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 403, "This is a one-to-many channel.  Only the creator is allowed to send messages."));
+      result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 403, "This is a one-to-many channel.  Only the creator is allowed to send messages.", channelId));
       return result;
     }
     if (messageInfo.history && channelInfo.options.history) {
@@ -455,7 +509,7 @@ export class ChannelServer implements TransportEventHandler {
     if (!controlRequest || !controlRequest.type) {
       const result: MessageHandlingDirective = {
         forwardMessageToSockets: [],
-        deliverControlMessages: [this.createErrorMessageDirective(null, socket.socketId, 400, "Invalid control message")]
+        deliverControlMessages: [this.createErrorMessageDirective(null, socket.socketId, 400, "Invalid control message", null)]
       };
       return result;
     }
@@ -473,7 +527,7 @@ export class ChannelServer implements TransportEventHandler {
       default:
         const result: MessageHandlingDirective = {
           forwardMessageToSockets: [],
-          deliverControlMessages: [this.createErrorMessageDirective(null, socket.socketId, 400, "Unknown or invalid control message type")]
+          deliverControlMessages: [this.createErrorMessageDirective(null, socket.socketId, 400, "Unknown or invalid control message type", null)]
         };
         return result;
     }
@@ -486,12 +540,12 @@ export class ChannelServer implements TransportEventHandler {
     };
     const requestDetails = controlRequest.details as JoinRequestDetails;
     if (!requestDetails || !requestDetails.channelId) {
-      result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 400, "Join request details missing or invalid"));
+      result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 400, "Join request details missing or invalid", requestDetails ? requestDetails.channelId : null));
       return result;
     }
     const channelRecord = await db.findChannelById(requestDetails.channelId);
     if (!channelRecord) {
-      result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 404, "No such channel"));
+      result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 404, "No such channel", null));
       return result;
     }
     let channelInfo = this.channelInfoById[channelRecord.channelId];
@@ -514,7 +568,7 @@ export class ChannelServer implements TransportEventHandler {
       const participant = channelInfo.participantsByCode[code];
       if (participant.socketId === socket.socketId) {
         // They are already joined.  Send a duplicate error
-        result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 409, "You have already joined this channel"));
+        result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 409, "You have already joined this channel", channelRecord.channelId));
         return result;
       }
     }
@@ -527,7 +581,7 @@ export class ChannelServer implements TransportEventHandler {
     } else {
       participantId = this.createId();
       if (!requestDetails.participantDetails) {
-        result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 400, "Since you have not joined before, you must provide identity information"));
+        result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 400, "Since you have not joined before, you must provide identity information", channelRecord.channelId));
         return result;
       }
       channelMemberRecord = await db.insertChannelMember(channelInfo.channelId, participantId, socket.userId, requestDetails.participantDetails, 'active');
@@ -614,22 +668,22 @@ export class ChannelServer implements TransportEventHandler {
     };
     const requestDetails = controlRequest.details as LeaveRequestDetails;
     if (!requestDetails || !requestDetails.channelId) {
-      result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 400, "Leave request details missing or invalid"));
+      result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 400, "Leave request details missing or invalid", requestDetails.channelId));
       return result;
     }
     const channelRecord = await db.findChannelById(requestDetails.channelId);
     if (!channelRecord) {
-      result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 404, "No such channel"));
+      result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 404, "No such channel", requestDetails.channelId));
       return result;
     }
     const channelInfo = this.channelInfoById[channelRecord.channelId];
     if (!channelInfo) {
-      result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 403, "This channel is not active"));
+      result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 403, "This channel is not active", requestDetails.channelId));
       return result;
     }
     const participant = channelInfo.participantsByUserId[socket.userId];
     if (!participant) {
-      result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 403, "You cannot leave a channel that you haven't joined."));
+      result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 403, "You cannot leave a channel that you haven't joined.", requestDetails.channelId));
       return result;
     }
     if (requestDetails.permanently) {
@@ -669,12 +723,12 @@ export class ChannelServer implements TransportEventHandler {
     };
     const requestDetails = controlRequest.details as HistoryRequestDetails;
     if (!requestDetails || !requestDetails.channelId) {
-      result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 400, "History request details missing or invalid"));
+      result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 400, "History request details missing or invalid", requestDetails.channelId));
       return result;
     }
     const channelRecord = await db.findChannelById(requestDetails.channelId);
     if (!channelRecord) {
-      result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 404, "No such channel"));
+      result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 404, "No such channel", requestDetails.channelId));
       return result;
     }
     const totalCount = await db.countMessages(channelRecord.channelId, requestDetails.before, requestDetails.after);
@@ -799,11 +853,14 @@ export class ChannelServer implements TransportEventHandler {
     }
   }
 
-  private createErrorMessageDirective(controlRequest: ControlChannelMessage, socketId: string, errorCode: number, errorMessage: string): ControlMessageDirective {
+  private createErrorMessageDirective(controlRequest: ControlChannelMessage, socketId: string, errorCode: number, errorMessage: string, channelId: string): ControlMessageDirective {
     const details: ErrorDetails = {
       statusCode: errorCode,
       errorMessage: errorMessage
     };
+    if (channelId) {
+      details.channelId = channelId;
+    }
     const message: ControlChannelMessage = {
       requestId: controlRequest ? controlRequest.requestId : null,
       type: 'error',
