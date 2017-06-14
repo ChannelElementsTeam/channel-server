@@ -1,10 +1,10 @@
 import * as express from "express";
 import { Express, Request, Response } from 'express';
 import { configuration } from '../configuration';
-import { RegistrationRequest, RegistrationResponse, ChannelCreateRequest, ControlChannelMessage, JoinRequestDetails, ShareResponse, ShareCodeResponse, GetChannelResponse, JoinResponseDetails, ShareRequest, MessageInfo, HistoryRequestDetails, HistoryResponseDetails, ChannelListResponse, LeaveRequestDetails } from '../interfaces/channel-server-interfaces';
+import { RegistrationRequest, RegistrationResponse, ChannelCreateRequest, ControlChannelMessage, JoinRequestDetails, ShareResponse, ShareCodeResponse, GetChannelResponse, JoinResponseDetails, ShareRequest, HistoryRequestDetails, HistoryResponseDetails, ChannelListResponse, LeaveRequestDetails } from '../interfaces/channel-server-interfaces';
 import { client as WebSocketClient, connection, IMessage } from 'websocket';
 import { TextDecoder, TextEncoder } from 'text-encoding';
-import { ChannelUtils } from "../channel-utils";
+import { ChannelUtils, MessageInfo } from "../channel-utils";
 import * as url from "url";
 const RestClient = require('node-rest-client').Client;
 const basic = require('basic-authorization-header');

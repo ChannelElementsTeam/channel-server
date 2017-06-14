@@ -1,9 +1,26 @@
-import { client as WebSocketClient, connection, IMessage } from 'websocket';
-import { ParsedMessageInfo, MessageInfo, ControlMessagePayload, HistoryMessageDetails, ControlChannelMessage } from "./interfaces/channel-server-interfaces";
+import { ControlMessagePayload, ControlChannelMessage } from "./interfaces/channel-server-interfaces";
 import { TextDecoder, TextEncoder } from 'text-encoding';
 
 export class ChannelUtils {
   static MESSAGE_HEADER_LENGTH = 32;
+
+  static serializeControlMessage(requestId: string, type: string, details: any, binaryPortion?: Uint8Array): Uint8Array {
+    const controlMessage: ControlChannelMessage = {
+      type: type,
+      details: details
+    };
+    if (requestId) {
+      controlMessage.requestId = requestId;
+    }
+    const controlPayload: ControlMessagePayload = {
+      jsonMessage: controlMessage,
+      binaryPortion: binaryPortion
+    };
+    const messageInfo: MessageInfo = {
+      controlMessagePayload: controlPayload
+    };
+    return this.serializeChannelMessage(messageInfo, 0, 0);
+  }
 
   static serializeChannelMessage(messageInfo: MessageInfo, lastTimestampSent: number, clockSkew: number): Uint8Array {
     // Allocate the proper length...
@@ -116,50 +133,21 @@ export class ChannelUtils {
     return result;
   }
 
-  static parseMessagePayloadAsString(message: Uint8Array): string {
-    try {
-      return new TextDecoder("utf-8").decode(message.subarray(this.MESSAGE_HEADER_LENGTH));
-    } catch (err) {
-      return null;
-    }
-  }
+}
 
-  static serializeHistoryMessage(channelId: string, participantId: string, messageTimestamp: number, message: Uint8Array): Uint8Array {
-    const details: HistoryMessageDetails = {
-      timestamp: messageTimestamp,
-      channelId: channelId,
-      participantId: participantId
-    };
-    const historyMessage: ControlChannelMessage = {
-      type: 'history-message',
-      details: details
-    };
-    const controlMessagePayload: ControlMessagePayload = {
-      jsonMessage: historyMessage,
-      binaryPortion: message
-    };
-    const messageInfo: MessageInfo = {
-      channelCode: 0,
-      senderCode: 0,
-      controlMessagePayload: controlMessagePayload
-    };
-    return this.serializeChannelMessage(messageInfo, 0, 0);
-  }
+export interface MessageInfo {
+  timestamp?: number;
+  channelCode?: number;
+  senderCode?: number;
+  priority?: boolean;
+  history?: boolean;
+  controlMessagePayload?: ControlMessagePayload;
+  rawPayload?: Uint8Array;
+}
 
-  static serializeControlMessage(requestId: string, type: string, details: any): Uint8Array {
-    const controlMessage: ControlChannelMessage = {
-      type: type,
-      details: details
-    };
-    if (requestId) {
-      controlMessage.requestId = requestId;
-    }
-    const controlPayload: ControlMessagePayload = {
-      jsonMessage: controlMessage
-    };
-    const messageInfo: MessageInfo = {
-      controlMessagePayload: controlPayload
-    };
-    return this.serializeChannelMessage(messageInfo, 0, 0);
-  }
+export interface ParsedMessageInfo {
+  valid: boolean;
+  errorMessage?: string;
+  rawMessage?: Uint8Array;
+  info?: MessageInfo;
 }

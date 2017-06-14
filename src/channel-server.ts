@@ -9,9 +9,9 @@ import { TextDecoder, TextEncoder } from 'text-encoding';
 
 import { TransportServer, TransportEventHandler, MessageHandlingDirective, ControlMessageDirective } from './transport-server';
 import { db } from "./db";
-import { UserRecord, ChannelMemberRecord, ChannelRecord, ChannelOptions, MessageRecord } from './interfaces/db-records';
-import { RegistrationResponse, ChannelServerResponse, RegistrationRequest, ChannelCreateRequest, GetChannelResponse, ChannelMemberInfo, ControlChannelMessage, MessageInfo, ChannelParticipantInfo, AccountResponse, AccountUpdateRequest, JoinRequestDetails, JoinResponseDetails, JoinNotificationDetails, ErrorDetails, ShareRequest, ShareResponse, ShareCodeResponse, LeaveNotificationDetails, HistoryRequestDetails, HistoryResponseDetails, ControlMessagePayload, ParsedMessageInfo, ProviderServiceList, ChannelListResponse, ChannelSummary, LeaveRequestDetails } from './interfaces/channel-server-interfaces';
-import { ChannelUtils } from "./channel-utils";
+import { UserRecord, ChannelMemberRecord, ChannelRecord, MessageRecord } from './interfaces/db-records';
+import { RegistrationResponse, ChannelServerResponse, RegistrationRequest, ChannelCreateRequest, GetChannelResponse, ChannelMemberInfo, ControlChannelMessage, ChannelParticipantInfo, AccountResponse, AccountUpdateRequest, JoinRequestDetails, JoinResponseDetails, JoinNotificationDetails, ErrorDetails, ShareRequest, ShareResponse, ShareCodeResponse, LeaveNotificationDetails, HistoryRequestDetails, HistoryResponseDetails, ControlMessagePayload, ProviderServiceList, ChannelListResponse, ChannelSummary, LeaveRequestDetails, ChannelOptions, HistoryMessageDetails } from './interfaces/channel-server-interfaces';
+import { ChannelUtils, MessageInfo } from "./channel-utils";
 import { Utils } from "./utils";
 
 const TOKEN_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -690,7 +690,12 @@ export class ChannelServer implements TransportEventHandler {
       for (let i = 0; i < values.length; i++) {
         view.setUint8(i, Number(values[i]));
       }
-      const historyMessage = ChannelUtils.serializeHistoryMessage(message.channelId, message.participantId, message.timestamp, messageBytes);
+      const details: HistoryMessageDetails = {
+        timestamp: message.timestamp,
+        channelId: channelRecord.channelId,
+        participantId: message.participantId
+      };
+      const historyMessage = ChannelUtils.serializeControlMessage(null, 'history-message', details, messageBytes);
       if (!await this.transport.deliverMessage(historyMessage, socket.socketId)) {
         break;
       }

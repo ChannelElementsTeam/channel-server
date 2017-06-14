@@ -1,4 +1,6 @@
 
+import { ChannelOptions } from "./channel-server-interfaces";
+
 export interface UserRecord {
   id: string;
   token: string;
@@ -6,18 +8,6 @@ export interface UserRecord {
   created: number;
   lastRequest: number;
   status: string;
-}
-
-export interface ChannelOptions {
-  history?: boolean;
-  maxHistoryCount?: number;
-  maxHistorySeconds?: number;
-  priority?: boolean;
-  maxParticipants?: number;
-  maxPayloadSize?: number;
-  maxMessageRate?: number;
-  maxDataRate?: number;
-  mode?: string; // many-to-many, one-to-many, many-to-one
 }
 
 export interface ChannelRecord {

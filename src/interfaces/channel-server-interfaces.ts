@@ -1,5 +1,3 @@
-import { ChannelOptions } from "./db-records";
-
 export interface ProviderServiceList {
   providerUrl: string;
   serviceHomeUrl: string;
@@ -103,7 +101,7 @@ export interface ChannelParticipantInfo {
 
 export interface ControlChannelMessage {
   requestId?: string;
-  type: string; // join, join-reply, leave, leave-reply, joined, left
+  type: string; // see https://github.com/ChannelElementsTeam/channel-server/wiki/Control-Channel-Messages
   details: any; // depends on type
 }
 
@@ -167,19 +165,14 @@ export interface ControlMessagePayload {
   binaryPortion?: Uint8Array;
 }
 
-export interface MessageInfo {
-  timestamp?: number;
-  channelCode?: number;
-  senderCode?: number;
-  priority?: boolean;
+export interface ChannelOptions {
   history?: boolean;
-  controlMessagePayload?: ControlMessagePayload;
-  rawPayload?: Uint8Array;
-}
-
-export interface ParsedMessageInfo {
-  valid: boolean;
-  errorMessage?: string;
-  rawMessage?: Uint8Array;
-  info?: MessageInfo;
+  maxHistoryCount?: number;
+  maxHistorySeconds?: number;
+  priority?: boolean;
+  maxParticipants?: number;
+  maxPayloadSize?: number;
+  maxMessageRate?: number;
+  maxDataRate?: number;
+  mode?: string; // many-to-many, one-to-many, many-to-one
 }
