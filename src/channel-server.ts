@@ -126,7 +126,20 @@ export class ChannelServer implements TransportEventHandler {
   }
 
   private async authenticateUser(request: Request, response?: Response): Promise<UserRecord> {
-    const credentials = auth(request);
+    let credentials: auth.BasicAuthResult;
+    const urlParts = url.parse(request.url);
+    if (urlParts.auth) {
+      const parts = urlParts.auth.split(":", 2);
+      if (parts.length === 2) {
+        credentials = {
+          name: parts[0],
+          pass: parts[1]
+        };
+      }
+    }
+    if (!credentials) {
+      credentials = auth(request);
+    }
     if (!credentials) {
       return null;
     }
