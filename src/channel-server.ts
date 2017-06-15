@@ -127,15 +127,11 @@ export class ChannelServer implements TransportEventHandler {
 
   private async authenticateUser(request: Request, response?: Response): Promise<UserRecord> {
     let credentials: auth.BasicAuthResult;
-    const urlParts = url.parse(request.url);
-    if (urlParts.auth) {
-      const parts = urlParts.auth.split(":", 2);
-      if (parts.length === 2) {
-        credentials = {
-          name: parts[0],
-          pass: parts[1]
-        };
-      }
+    if (request.query.id && request.query.token) {
+      credentials = {
+        name: request.query.id,
+        pass: request.query.token
+      };
     }
     if (!credentials) {
       credentials = auth(request);
@@ -163,6 +159,7 @@ export class ChannelServer implements TransportEventHandler {
     const user = await this.authenticateUser(request, response);
     if (!user) {
       console.warn("ChannelServer: handleGetAccount not authenticated");
+      response.status(401).send("Not authenticated");
       return;
     }
     const reply: AccountResponse = {

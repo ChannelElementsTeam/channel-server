@@ -255,8 +255,9 @@ export class ClientTester {
         });
         resolve();
       });
-      const headers: any = { Authorization: basic(client.registrationResponse.id, client.registrationResponse.token) };
-      client.socket.connect(client.channelResponse.transportUrl, null, null, headers);
+
+      const headers: any = {}; // { Authorization: basic(client.registrationResponse.id, client.registrationResponse.token) };
+      client.socket.connect(client.channelResponse.transportUrl + "?id=" + encodeURIComponent(client.registrationResponse.id) + "&token=" + encodeURIComponent(client.registrationResponse.token), null, null, headers);
     });
   }
 
