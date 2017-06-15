@@ -104,7 +104,7 @@ export class ClientTester {
     const client = new TestClient(id);
     this.clientsById[id] = client;
     await this.register(client, name, url.resolve(configuration.get('baseClientUri'), '/d/register'));
-    await this.createChannel(client);
+    await this.createChannel(client, name);
     await this.openSocket(client);
     await this.joinChannel(client);
     await this.shareChannel(client, name);
@@ -206,10 +206,11 @@ export class ClientTester {
     });
   }
 
-  private async createChannel(client: TestClient): Promise<void> {
+  private async createChannel(client: TestClient, name: string): Promise<void> {
     const createRequest: ChannelCreateRequest = {
       options: null,
-      details: {}
+      channelDetails: {},
+      participantDetails: { name: name }
     };
     const args: PostArgs = {
       data: createRequest,

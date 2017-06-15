@@ -278,7 +278,7 @@ export class ChannelServer implements TransportEventHandler {
     // that REST requests that need to be handled by the server doing the transport arrive on the correct server.
     const channelId = this.createId();
     const options = this.fillAllOptions(channelRequest && channelRequest.options ? channelRequest.options : {});
-    const channelRecord = await db.insertChannel(channelId, user.id, transportUrl, options, channelRequest ? channelRequest.details : null, 'active');
+    const channelRecord = await db.insertChannel(channelId, user.id, transportUrl, options, channelRequest ? channelRequest.channelDetails : null, 'active');
     const now = Date.now();
     const channelInfo: ChannelInfo = {
       code: this.allocateChannelCode(),
@@ -293,7 +293,7 @@ export class ChannelServer implements TransportEventHandler {
     this.channelInfoById[channelRecord.channelId] = channelInfo;
     this.channelIdByCode[channelInfo.code] = channelRecord.channelId;
     const participantId = this.createId();
-    await db.insertChannelMember(channelId, participantId, user.id, {}, 'active');
+    await db.insertChannelMember(channelId, participantId, user.id, channelRequest.participantDetails, 'active');
     const reply = await this.handleGetChannelResponse(channelRecord, user, request, response);
     console.log("ChannelServer: channel created", user.id, channelId);
   }

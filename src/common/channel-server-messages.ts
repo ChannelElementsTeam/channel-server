@@ -76,7 +76,8 @@ export interface ChannelJoinRequest {
 
 export interface ChannelCreateRequest {
   options?: ChannelOptions;
-  details?: any;
+  channelDetails?: any;
+  participantDetails?: any;
 }
 
 export interface ChannelMemberInfo {
