@@ -188,6 +188,11 @@ export class ChannelServer implements TransportEventHandler {
       response.status(400).send("Invalid request:  missing channelId");
       return;
     }
+    const channelMember = await db.findChannelMember(shareRequest.channelId, user.id);
+    if (!channelMember || channelMember.status !== 'active') {
+      response.status(403).send("You cannot share a channel unless you are a member");
+      return;
+    }
     const channelRecord = await db.findChannelById(shareRequest.channelId);
     if (!channelRecord) {
       response.status(404).send("No such channel");
@@ -290,9 +295,19 @@ export class ChannelServer implements TransportEventHandler {
       console.warn("ChannelServer: handleCreateChannel not authenticated");
       return;
     }
-    const channelRecord = await db.findChannelById(request.params.cid);
+    const channelId = request.params.cid;
+    const channelMember = await db.findChannelMember(channelId, user.id);
+    if (!channelMember || channelMember.status !== 'active') {
+      response.status(403).send("You cannot delete a channel unless you are a member");
+      return;
+    }
+    const channelRecord = await db.findChannelById(channelId);
     if (!channelRecord || channelRecord.status !== 'active') {
       response.status(404).send("No such channel");
+      return;
+    }
+    if (channelRecord.creatorId !== user.id) {
+      response.status(404).send("You must be the creator to delete a channel");
       return;
     }
     await db.updateChannelStatus(channelRecord.channelId, 'deleted');
@@ -601,6 +616,11 @@ export class ChannelServer implements TransportEventHandler {
       result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 404, "No such channel", null));
       return result;
     }
+    const channelMemberRecord = await db.findChannelMember(channelRecord.channelId, socket.userId);
+    if (!channelMemberRecord || channelMemberRecord.status !== 'active') {
+      result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 403, "You are not a member", null));
+      return;
+    }
     let channelInfo = this.channelInfoById[channelRecord.channelId];
     if (!channelInfo) {
       // This channel has no active participants right now.  So we'll allocate a new code for it
@@ -626,19 +646,8 @@ export class ChannelServer implements TransportEventHandler {
       }
     }
     const now = Date.now();
-    let participantId: string;
-    let channelMemberRecord = await db.findChannelMember(channelInfo.channelId, socket.userId);
-    if (channelMemberRecord) {
-      participantId = channelMemberRecord.participantId;
-      await db.updateChannelMemberActive(channelMemberRecord.channelId, channelMemberRecord.userId, 'active', now, requestDetails.participantDetails);
-    } else {
-      participantId = this.createId();
-      if (!requestDetails.participantDetails) {
-        result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 400, "Since you have not joined before, you must provide identity information", channelRecord.channelId));
-        return result;
-      }
-      channelMemberRecord = await db.insertChannelMember(channelInfo.channelId, participantId, socket.userId, requestDetails.participantDetails, 'active');
-    }
+    const participantId = channelMemberRecord.participantId;
+    await db.updateChannelMemberActive(channelMemberRecord.channelId, channelMemberRecord.userId, 'active', now, requestDetails.participantDetails);
     socket.channelIds.push(channelInfo.channelId);
     const participant: ParticipantInfo = {
       participantId: participantId,
@@ -783,6 +792,11 @@ export class ChannelServer implements TransportEventHandler {
     if (!channelRecord) {
       result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 404, "No such channel", requestDetails.channelId));
       return result;
+    }
+    const channelMemberRecord = await db.findChannelMember(channelRecord.channelId, socket.userId);
+    if (!channelMemberRecord || channelMemberRecord.status !== 'active') {
+      result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 403, "You are not a member", null));
+      return;
     }
     const totalCount = await db.countMessages(channelRecord.channelId, requestDetails.before, requestDetails.after);
     const count = totalCount < 100 ? totalCount : 100;
