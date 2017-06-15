@@ -360,7 +360,7 @@ export class ClientTester {
           "Content-Type": "application/json"
         }
       };
-      this.restClient.post(client.shareCodeResponse.joinChannelUrl, args, (data: any, joinChannelResponse: Response) => {
+      this.restClient.post(client.shareCodeResponse.acceptChannelUrl, args, (data: any, joinChannelResponse: Response) => {
         if (joinChannelResponse.statusCode === 200) {
           console.log("TestClient: Share code fetched", data);
           client.channelResponse = data as GetChannelResponse;

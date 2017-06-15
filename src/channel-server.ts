@@ -79,8 +79,8 @@ export class ChannelServer implements TransportEventHandler {
     this.app.get(restRelativeBaseUrl + '/invitation/:share', (request: Request, response: Response) => {
       void this.handleGetInvitation(request, response);
     });
-    this.app.post(restRelativeBaseUrl + '/join', (request: Request, response: Response) => {
-      void this.handleJoinMember(request, response);
+    this.app.post(restRelativeBaseUrl + '/accept', (request: Request, response: Response) => {
+      void this.handleAccept(request, response);
     });
     this.app.post(restRelativeBaseUrl + '/channels/create', (request: Request, response: Response) => {
       void this.handleCreateChannel(request, response);
@@ -105,7 +105,7 @@ export class ChannelServer implements TransportEventHandler {
       createChannelUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/channels/create'),
       channelListUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/channels'),
       shareChannelUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/share'),
-      joinChannelurl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/join')
+      acceptChannelUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/join')
     };
     return result;
   }
@@ -230,7 +230,7 @@ export class ChannelServer implements TransportEventHandler {
     const reply: ShareCodeResponse = {
       providerUrl: this.providerUrl,
       registrationUrl: this.getServicesList().registrationUrl,
-      joinChannelUrl: this.getServicesList().joinChannelurl,
+      acceptChannelUrl: this.getServicesList().acceptChannelUrl,
       details: invitation.details,
       invitationId: invitation.id
     };
@@ -238,10 +238,10 @@ export class ChannelServer implements TransportEventHandler {
     console.log("ChannelServer: invitation fetched", shareId, invitation.channelId);
   }
 
-  private async handleJoinMember(request: Request, response: Response): Promise<void> {
+  private async handleAccept(request: Request, response: Response): Promise<void> {
     const user = await this.authenticateUser(request, response);
     if (!user) {
-      console.warn("ChannelServer: handleJoinMember not authenticated");
+      console.warn("ChannelServer: handleAccept not authenticated");
       return;
     }
     const details = request.body as ChannelJoinRequest;
