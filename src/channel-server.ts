@@ -105,7 +105,7 @@ export class ChannelServer implements TransportEventHandler {
       createChannelUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/channels/create'),
       channelListUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/channels'),
       shareChannelUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/share'),
-      acceptChannelUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/join')
+      acceptChannelUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/accept')
     };
     return result;
   }

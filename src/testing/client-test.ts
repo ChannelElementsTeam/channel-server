@@ -129,7 +129,7 @@ export class ClientTester {
     this.clientsById[id] = client;
     await this.getShare(client, from);
     await this.register(client, name, (client.shareCodeResponse).registrationUrl);
-    await this.joinAsMember(client, name);
+    await this.accept(client, name);
     await this.openSocket(client);
     await this.joinChannel(client);
     await this.requestHistory(client);
@@ -347,7 +347,7 @@ export class ClientTester {
     });
   }
 
-  private async joinAsMember(client: TestClient, name: string): Promise<void> {
+  private async accept(client: TestClient, name: string): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       const details: ChannelJoinRequest = {
         invitationId: client.shareCodeResponse.invitationId,
@@ -367,7 +367,7 @@ export class ClientTester {
           resolve();
         } else {
           console.warn("Failed", joinChannelResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject("Failed to Get share code");
+          reject("Failed to accept");
         }
       });
     });
