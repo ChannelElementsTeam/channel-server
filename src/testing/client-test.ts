@@ -4,7 +4,7 @@ import { configuration } from '../configuration';
 import { RegistrationRequest, RegistrationResponse, ChannelCreateRequest, ControlChannelMessage, JoinRequestDetails, ShareResponse, GetChannelResponse, JoinResponseDetails, ShareRequest, HistoryRequestDetails, HistoryResponseDetails, ChannelListResponse, LeaveRequestDetails } from '../common/channel-server-messages';
 import { client as WebSocketClient, connection, IMessage } from 'websocket';
 import { TextDecoder, TextEncoder } from 'text-encoding';
-import { ChannelMessageUtils, MessageInfo, UnauthenticatedShareCodeResponse } from "../common/channel-server-messages";
+import { ChannelMessageUtils, MessageInfo, ShareCodeResponse, ChannelJoinRequest } from "../common/channel-server-messages";
 import * as url from "url";
 const RestClient = require('node-rest-client').Client;
 const basic = require('basic-authorization-header');
@@ -33,7 +33,7 @@ class TestClient {
   channelListResponse?: ChannelListResponse;
   requestIndex = 1;
   shareResponse?: ShareResponse;
-  shareCodeResponse?: UnauthenticatedShareCodeResponse | GetChannelResponse;
+  shareCodeResponse?: ShareCodeResponse;
   joinResponseDetails?: JoinResponseDetails;
 
   constructor(id: string) {
@@ -106,7 +106,7 @@ export class ClientTester {
     await this.register(client, name, url.resolve(configuration.get('baseClientUri'), '/d/register'));
     await this.createChannel(client);
     await this.openSocket(client);
-    await this.joinChannel(client, name);
+    await this.joinChannel(client);
     await this.shareChannel(client, name);
     await this.listChannels(client);
     await this.send(client, "This is just after channel creation.");
@@ -127,11 +127,11 @@ export class ClientTester {
     }
     const client = new TestClient(id);
     this.clientsById[id] = client;
-    await this.getShare(client, from);  // first time without credentials
-    await this.register(client, name, (client.shareCodeResponse as UnauthenticatedShareCodeResponse).registrationUrl);
-    await this.getShare(client, from); // this time with credentials
+    await this.getShare(client, from);
+    await this.register(client, name, (client.shareCodeResponse).registrationUrl);
+    await this.joinAsMember(client, name);
     await this.openSocket(client);
-    await this.joinChannel(client, name);
+    await this.joinChannel(client);
     await this.requestHistory(client);
     await this.listChannels(client);
     response.end();
@@ -261,10 +261,9 @@ export class ClientTester {
     });
   }
 
-  private async joinChannel(client: TestClient, name: string): Promise<void> {
+  private async joinChannel(client: TestClient): Promise<void> {
     const details: JoinRequestDetails = {
-      channelId: client.channelResponse.channelId,
-      participantDetails: { name: name }
+      channelId: client.channelResponse.channelId
     };
     const requestId = client.requestIndex.toString();
     client.requestIndex++;
@@ -334,20 +333,39 @@ export class ClientTester {
       const args: RestArgs = {
         headers: {}
       };
-      if (client.registrationResponse) {
-        args.headers.Authorization = basic(client.registrationResponse.id, client.registrationResponse.token);
-      }
-      this.restClient.get(shareResponse.shareCodeUrl, args, (data: any, shareInfoResponse: Response) => {
-        if (shareInfoResponse.statusCode === 200) {
+      this.restClient.get(shareResponse.shareCodeUrl, args, (data: any, shareCodeResponse: Response) => {
+        if (shareCodeResponse.statusCode === 200) {
+          console.log("TestClient: Share code fetched", data);
+          client.shareCodeResponse = data as ShareCodeResponse;
+          resolve();
+        } else {
+          console.warn("Failed", shareCodeResponse.statusCode, new TextDecoder('utf-8').decode(data));
+          reject("Failed to Get share code");
+        }
+      });
+    });
+  }
+
+  private async joinAsMember(client: TestClient, name: string): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const details: ChannelJoinRequest = {
+        invitationId: client.shareCodeResponse.invitationId,
+        details: { name: name }
+      };
+      const args: PostArgs = {
+        data: details,
+        headers: {
+          Authorization: basic(client.registrationResponse.id, client.registrationResponse.token),
+          "Content-Type": "application/json"
+        }
+      };
+      this.restClient.post(client.shareCodeResponse.joinChannelUrl, args, (data: any, joinChannelResponse: Response) => {
+        if (joinChannelResponse.statusCode === 200) {
           console.log("TestClient: Share code fetched", data);
           client.channelResponse = data as GetChannelResponse;
           resolve();
-        } else if (shareInfoResponse.statusCode === 202) {
-          console.log("TestClient: Share code fetched", data);
-          client.shareCodeResponse = data as UnauthenticatedShareCodeResponse;
-          resolve();
         } else {
-          console.warn("Failed", shareInfoResponse.statusCode, new TextDecoder('utf-8').decode(data));
+          console.warn("Failed", joinChannelResponse.statusCode, new TextDecoder('utf-8').decode(data));
           reject("Failed to Get share code");
         }
       });

@@ -45,6 +45,7 @@ export interface ProviderServiceList {
   createChannelUrl: string;
   channelListUrl: string;
   shareChannelUrl: string;
+  joinChannelurl: string;
 }
 
 export interface AccountUpdateRequest {
@@ -60,9 +61,16 @@ export interface ShareResponse {
   shareCodeUrl: string;
 }
 
-export interface UnauthenticatedShareCodeResponse {
+export interface ShareCodeResponse {
   providerUrl: string;
   registrationUrl: string;
+  joinChannelUrl: string;
+  invitationId: string;
+  details: any;
+}
+
+export interface ChannelJoinRequest {
+  invitationId: string;
   details: any;
 }
 
@@ -120,7 +128,6 @@ export interface ControlChannelMessage {
 
 export interface JoinRequestDetails {
   channelId: string;
-  participantDetails?: any;
 }
 
 export interface JoinResponseDetails {

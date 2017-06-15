@@ -12,7 +12,7 @@ import { db } from "./db";
 import { UserRecord, ChannelMemberRecord, ChannelRecord, MessageRecord } from './interfaces/db-records';
 import { RegistrationResponse, ChannelServerResponse, RegistrationRequest, ChannelCreateRequest, GetChannelResponse, ChannelMemberInfo, ControlChannelMessage, ChannelParticipantInfo, AccountResponse, AccountUpdateRequest, JoinRequestDetails, JoinResponseDetails, JoinNotificationDetails, ErrorDetails, ShareRequest, ShareResponse, LeaveNotificationDetails, HistoryRequestDetails, HistoryResponseDetails, ControlMessagePayload, ProviderServiceList, ChannelListResponse, LeaveRequestDetails, ChannelOptions, HistoryMessageDetails } from './common/channel-server-messages';
 import { Utils } from "./utils";
-import { MessageInfo, ChannelMessageUtils, PingRequestDetails, ChannelDeleteResponseDetails, ChannelDeletedNotificationDetails, UnauthenticatedShareCodeResponse } from "./common/channel-server-messages";
+import { MessageInfo, ChannelMessageUtils, PingRequestDetails, ChannelDeleteResponseDetails, ChannelDeletedNotificationDetails, ShareCodeResponse, ChannelJoinRequest } from "./common/channel-server-messages";
 
 const TOKEN_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const MAX_HISTORY_BUFFERED_SIZE = 50000;
@@ -79,6 +79,9 @@ export class ChannelServer implements TransportEventHandler {
     this.app.get(restRelativeBaseUrl + '/invitation/:share', (request: Request, response: Response) => {
       void this.handleGetInvitation(request, response);
     });
+    this.app.post(restRelativeBaseUrl + '/join', (request: Request, response: Response) => {
+      void this.handleJoinMember(request, response);
+    });
     this.app.post(restRelativeBaseUrl + '/channels/create', (request: Request, response: Response) => {
       void this.handleCreateChannel(request, response);
     });
@@ -101,7 +104,8 @@ export class ChannelServer implements TransportEventHandler {
       accountUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/account'),
       createChannelUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/channels/create'),
       channelListUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/channels'),
-      shareChannelUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/share')
+      shareChannelUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/share'),
+      joinChannelurl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/join')
     };
     return result;
   }
@@ -223,15 +227,31 @@ export class ChannelServer implements TransportEventHandler {
       response.status(404).send("No such invitation");
       return;
     }
+    const reply: ShareCodeResponse = {
+      providerUrl: this.providerUrl,
+      registrationUrl: this.getServicesList().registrationUrl,
+      joinChannelUrl: this.getServicesList().joinChannelurl,
+      details: invitation.details,
+      invitationId: invitation.id
+    };
+    response.json(reply);
+    console.log("ChannelServer: invitation fetched", shareId, invitation.channelId);
+  }
+
+  private async handleJoinMember(request: Request, response: Response): Promise<void> {
     const user = await this.authenticateUser(request, response);
     if (!user) {
-      const reply: UnauthenticatedShareCodeResponse = {
-        providerUrl: this.providerUrl,
-        registrationUrl: this.getServicesList().registrationUrl,
-        details: invitation.details
-      };
-      response.status(202).json(reply);
-      console.log("ChannelServer: invitation fetched without credentials", shareId, invitation.channelId);
+      console.warn("ChannelServer: handleJoinMember not authenticated");
+      return;
+    }
+    const details = request.body as ChannelJoinRequest;
+    if (!details || !details.invitationId) {
+      response.status(400).send("Request is invalid -- missing invitationId");
+      return;
+    }
+    const invitation = await db.findInvitationById(details.invitationId);
+    if (!invitation) {
+      response.status(404).send("This invitation is no longer valid");
       return;
     }
     const channelRecord = await db.findChannelById(invitation.channelId);
@@ -240,9 +260,9 @@ export class ChannelServer implements TransportEventHandler {
       return;
     }
     const participantId = this.createId();
-    await db.insertChannelMember(channelRecord.channelId, participantId, user.id, {}, 'active');
+    await db.insertChannelMember(channelRecord.channelId, participantId, user.id, details.details, 'active');
     await this.handleGetChannelResponse(channelRecord, user, request, response);
-    console.log("ChannelServer: invitation fetched and channel joined", shareId, invitation.channelId);
+    console.log("ChannelServer: invitation used and channel joined", user.id, invitation.id, invitation.channelId);
   }
 
   private async handleCreateChannel(request: Request, response: Response): Promise<void> {
@@ -657,7 +677,7 @@ export class ChannelServer implements TransportEventHandler {
     }
     const now = Date.now();
     const participantId = channelMemberRecord.participantId;
-    await db.updateChannelMemberActive(channelMemberRecord.channelId, channelMemberRecord.userId, 'active', now, requestDetails.participantDetails);
+    await db.updateChannelMemberActive(channelMemberRecord.channelId, channelMemberRecord.userId, 'active', now, null);
     socket.channelIds.push(channelInfo.channelId);
     const participant: ParticipantInfo = {
       participantId: participantId,
