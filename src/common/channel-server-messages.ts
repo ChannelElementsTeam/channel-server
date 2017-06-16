@@ -325,7 +325,7 @@ export class ChannelMessageUtils {
     const behavior = view.getUint8(14);
     result.info.priority = (behavior & 0x01) ? true : false;
     result.info.history = (behavior & 0x02) ? true : false;
-    result.info.rawPayload = new Uint8Array(message.buffer, message.byteOffset + this.MESSAGE_HEADER_LENGTH, message.byteLength - this.MESSAGE_HEADER_LENGTH);
+    result.info.rawPayload = message; // new Uint8Array(message.buffer, message.byteOffset, message.byteLength);
     if (result.info.channelCode === 0 && result.info.senderCode === 0) {
       const jsonLength = view.getUint32(this.MESSAGE_HEADER_LENGTH);
       try {
@@ -334,7 +334,7 @@ export class ChannelMessageUtils {
           jsonMessage: JSON.parse(jsonString)
         };
         if (message.byteLength > this.MESSAGE_HEADER_LENGTH + 4 + jsonLength) {
-          result.info.controlMessagePayload.binaryPortion = new Uint8Array(result.info.rawPayload.buffer, result.info.rawPayload.byteOffset + 4 + jsonLength, result.info.rawPayload.byteLength - 4 - jsonLength);
+          result.info.controlMessagePayload.binaryPortion = new Uint8Array(result.info.rawPayload.buffer, this.MESSAGE_HEADER_LENGTH + result.info.rawPayload.byteOffset + 4 + jsonLength, result.info.rawPayload.byteLength - 4 - jsonLength - this.MESSAGE_HEADER_LENGTH);
         }
       } catch (err) {
         result.valid = false;
