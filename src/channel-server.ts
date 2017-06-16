@@ -468,7 +468,8 @@ export class ChannelServer implements TransportEventHandler {
       isOpen: true,
       lastPingSent: now,
       lastPingReply: now,
-      pingId: 1
+      pingId: 1,
+      lastTimestampReceived: 0
     };
     let socketIds = this.socketIdsByUserId[user.id];
     if (!socketIds) {
@@ -549,6 +550,10 @@ export class ChannelServer implements TransportEventHandler {
     const socket = this.socketInfoById[socketId];
     if (!socket) {
       throw new Error("Missing socket");
+    }
+    if (messageInfo.timestamp <= socket.lastTimestampReceived) {
+      result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 400, "Discarding illegal message:  timestamp must always increase", null));
+      return result;  // sending to an unknown channel
     }
     if (messageInfo.channelCode === 0 || messageInfo.senderCode === 0) {
       return this.handleReceivedControlMessage(messageInfo, socket);
@@ -1042,4 +1047,5 @@ interface SocketInfo {
   lastPingSent: number;
   lastPingReply: number;
   pingId: number;
+  lastTimestampReceived: number;
 }

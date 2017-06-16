@@ -214,6 +214,7 @@ export interface ChannelOptions {
 
 export class ChannelMessageUtils {
   static MESSAGE_HEADER_LENGTH = 32;
+  static CHANNEL_ELEMENTS_VERSION_V1 = 0xCE01;
 
   static serializeControlMessage(requestId: string, type: string, details: any, binaryPortion?: Uint8Array): Uint8Array {
     const controlMessage: ControlChannelMessage = {
@@ -257,12 +258,13 @@ export class ChannelMessageUtils {
     if (timestamp <= lastTimestampSent) {
       timestamp = lastTimestampSent + 1;
     }
+    view.setUint16(0, this.CHANNEL_ELEMENTS_VERSION_V1);
     const topTime = Math.floor(timestamp / (Math.pow(2, 32)));
-    view.setUint16(0, topTime);
+    view.setUint16(2, topTime);
     const remainder = timestamp - (topTime * Math.pow(2, 32));
-    view.setUint32(2, remainder);
-    view.setUint32(6, messageInfo.channelCode ? messageInfo.channelCode : 0);
-    view.setUint32(10, messageInfo.senderCode ? messageInfo.senderCode : 0);
+    view.setUint32(4, remainder);
+    view.setUint32(8, messageInfo.channelCode ? messageInfo.channelCode : 0);
+    view.setUint32(12, messageInfo.senderCode ? messageInfo.senderCode : 0);
     let behavior = 0;
     if (messageInfo.priority) {
       behavior |= 0x01;
@@ -270,8 +272,8 @@ export class ChannelMessageUtils {
     if (messageInfo.history) {
       behavior |= 0x02;
     }
-    view.setUint8(14, behavior);
-    result.fill(0, 15, this.MESSAGE_HEADER_LENGTH);
+    view.setUint8(16, behavior);
+    result.fill(0, 17, this.MESSAGE_HEADER_LENGTH);
 
     // Now the payload...
 
@@ -298,8 +300,12 @@ export class ChannelMessageUtils {
       return result;
     }
     const view = new DataView(message.buffer, message.byteOffset);
-    const topBytes = view.getUint16(0);
-    const bottomBytes = view.getUint32(2);
+    if (view.getUint16(0) !== this.CHANNEL_ELEMENTS_VERSION_V1) {
+      result.errorMessage = 'Message prefix is invalid.  Incorrect protocol?';
+      return result;
+    }
+    const topBytes = view.getUint16(2);
+    const bottomBytes = view.getUint32(4);
     const timestamp = topBytes * Math.pow(2, 32) + bottomBytes;
     const delta = Date.now() - timestamp;
     if (enforceClockSync && Math.abs(delta) > 15000) {
@@ -307,12 +313,12 @@ export class ChannelMessageUtils {
       result.errorMessage = "Clocks are too far out of sync, or message timestamp is invalid";
       return result;
     }
-    const behavior = view.getUint8(14);
+    const behavior = view.getUint8(16);
     const contents: ChannelMessage = {
       serializedMessage: message,
       timestamp: timestamp,
-      channelCode: view.getUint32(6),
-      senderCode: view.getUint32(10),
+      channelCode: view.getUint32(8),
+      senderCode: view.getUint32(12),
       priority: (behavior & 0x01) ? true : false,
       history: (behavior & 0x02) ? true : false,
       fullPayload: new Uint8Array(message.buffer, message.byteOffset + this.MESSAGE_HEADER_LENGTH, message.byteLength - this.MESSAGE_HEADER_LENGTH)
