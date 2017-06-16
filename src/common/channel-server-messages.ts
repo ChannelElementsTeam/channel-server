@@ -334,7 +334,7 @@ export class ChannelMessageUtils {
           jsonMessage: JSON.parse(jsonString)
         };
         if (message.byteLength > this.MESSAGE_HEADER_LENGTH + 4 + jsonLength) {
-          result.info.controlMessagePayload.binaryPortion = new Uint8Array(message.buffer, message.byteOffset + this.MESSAGE_HEADER_LENGTH + 4 + jsonLength);
+          result.info.controlMessagePayload.binaryPortion = new Uint8Array(result.info.rawPayload.buffer, result.info.rawPayload.byteOffset + 4 + jsonLength, result.info.rawPayload.byteLength - 4 - jsonLength);
         }
       } catch (err) {
         result.valid = false;
