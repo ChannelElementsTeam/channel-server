@@ -299,7 +299,7 @@ export class ChannelMessageUtils {
     return result;
   }
 
-  static parseChannelMessage(message: Uint8Array): ParsedMessageInfo {
+  static parseChannelMessage(message: Uint8Array, enforceClockSync = true): ParsedMessageInfo {
     const result: ParsedMessageInfo = {
       rawMessage: message,
       valid: false
@@ -315,7 +315,7 @@ export class ChannelMessageUtils {
     const bottomBytes = view.getUint32(2);
     result.info.timestamp = topBytes * Math.pow(2, 32) + bottomBytes;
     const delta = Date.now() - result.info.timestamp;
-    if (Math.abs(delta) > 15000) {
+    if (enforceClockSync && Math.abs(delta) > 15000) {
       result.valid = false;
       result.errorMessage = "Clocks are too far out of sync, or message timestamp is invalid";
       return result;
