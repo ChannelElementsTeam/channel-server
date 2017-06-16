@@ -338,7 +338,9 @@ export class ClientTester {
     const shareResponse = this.clientsById[from].shareResponse;
     return new Promise<void>((resolve, reject) => {
       const args: RestArgs = {
-        headers: {}
+        headers: {
+          'Accept': 'application/json'
+        }
       };
       this.restClient.get(shareResponse.shareCodeUrl, args, (data: any, shareCodeResponse: Response) => {
         if (shareCodeResponse.statusCode === 200) {

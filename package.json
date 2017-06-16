@@ -18,6 +18,7 @@
   "homepage": "https://github.com/ChannelElementsTeam/channel-server#readme",
   "dependencies": {
     "@types/basic-auth": "^1.1.1",
+    "@types/express-handlebars": "0.0.29",
     "@types/text-encoding": "0.0.30",
     "@types/uuid": "^3.0.0",
     "@types/websocket": "0.0.33",
@@ -27,6 +28,7 @@
     "compression": "^1.6.2",
     "cookie-parser": "^1.4.3",
     "express": "^4.15.3",
+    "express-handlebars": "^3.0.0",
     "express-ws": "^3.0.0",
     "mongodb": "^2.2.27",
     "node-rest-client": "^3.1.0",

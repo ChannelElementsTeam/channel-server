@@ -5,11 +5,13 @@ import * as crypto from "crypto";
 import * as uuid from "uuid";
 import * as auth from "basic-auth";
 import * as url from 'url';
+import * as expressHandlebars from 'express-handlebars';
+
 import { TextDecoder, TextEncoder } from 'text-encoding';
 
 import { TransportServer, TransportEventHandler, MessageHandlingDirective, ControlMessageDirective } from './transport-server';
 import { db } from "./db";
-import { UserRecord, ChannelMemberRecord, ChannelRecord, MessageRecord } from './interfaces/db-records';
+import { UserRecord, ChannelMemberRecord, ChannelRecord, MessageRecord, ChannelInvitation } from './interfaces/db-records';
 import { RegistrationResponse, ChannelServerResponse, RegistrationRequest, ChannelCreateRequest, GetChannelResponse, ChannelMemberInfo, ControlChannelMessage, ChannelParticipantInfo, AccountResponse, AccountUpdateRequest, JoinRequestDetails, JoinResponseDetails, JoinNotificationDetails, ErrorDetails, ShareRequest, ShareResponse, LeaveNotificationDetails, HistoryRequestDetails, HistoryResponseDetails, ControlMessagePayload, ProviderServiceList, ChannelListResponse, LeaveRequestDetails, ChannelOptions, HistoryMessageDetails } from './common/channel-server-messages';
 import { Utils } from "./utils";
 import { DeserializedMessage, ChannelMessageUtils, PingRequestDetails, ChannelDeleteResponseDetails, ChannelDeletedNotificationDetails, ShareCodeResponse, ChannelJoinRequest, ChannelMessage } from "./common/channel-server-messages";
@@ -49,6 +51,9 @@ export class ChannelServer implements TransportEventHandler {
     this.transport = new TransportServer(app, server, this, relativeTransportUrl);
     this.pingInterval = pingInterval;
     this.pingTimeout = pingTimeout;
+
+    this.app.engine('handlebars', expressHandlebars({ defaultLayout: 'main' }));
+    this.app.set('view engine', 'handlebars');
   }
 
   start(): void {
@@ -76,7 +81,7 @@ export class ChannelServer implements TransportEventHandler {
     this.app.post(restRelativeBaseUrl + '/share', (request: Request, response: Response) => {
       void this.handleShare(request, response);
     });
-    this.app.get(restRelativeBaseUrl + '/invitation/:share', (request: Request, response: Response) => {
+    this.app.get('/i/:share', (request: Request, response: Response) => {
       void this.handleGetInvitation(request, response);
     });
     this.app.post(restRelativeBaseUrl + '/accept', (request: Request, response: Response) => {
@@ -212,9 +217,18 @@ export class ChannelServer implements TransportEventHandler {
       response.status(404).send("No such channel");
       return;
     }
-    const invitation = await db.insertInvitation(this.createId(), user.id, channelRecord.channelId, shareRequest ? shareRequest.details : null);
+    let invitation: ChannelInvitation;
+    let count = 0;
+    while (count++ < 1000) {
+      const invitationId = this.createToken(6);
+      try {
+        invitation = await db.insertInvitation(invitationId, user.id, channelRecord.channelId, shareRequest ? shareRequest.details : null);
+      } catch (err) {
+        // Possible duplicate on id, so will just try again
+      }
+    }
     const reply: ShareResponse = {
-      shareCodeUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/invitation/' + invitation.id)
+      shareCodeUrl: url.resolve(this.restBaseUrl, '/i/' + invitation.id)
     };
     console.log("ChannelServer: invitation created", user.id, channelRecord.channelId);
     response.json(reply);
@@ -227,15 +241,25 @@ export class ChannelServer implements TransportEventHandler {
       response.status(404).send("No such invitation");
       return;
     }
-    const reply: ShareCodeResponse = {
-      providerUrl: this.providerUrl,
-      registrationUrl: this.getServicesList().registrationUrl,
-      acceptChannelUrl: this.getServicesList().acceptChannelUrl,
-      details: invitation.details,
-      invitationId: invitation.id
-    };
-    response.json(reply);
-    console.log("ChannelServer: invitation fetched", shareId, invitation.channelId);
+    if (request.accepts('json')) {
+      response.render('sharecode', {
+        helpers: {
+          sharecode: () => {
+            return url.resolve(this.restBaseUrl, '/i/' + invitation.id);
+          }
+        }
+      });
+    } else {
+      const reply: ShareCodeResponse = {
+        providerUrl: this.providerUrl,
+        registrationUrl: this.getServicesList().registrationUrl,
+        acceptChannelUrl: this.getServicesList().acceptChannelUrl,
+        details: invitation.details,
+        invitationId: invitation.id
+      };
+      response.json(reply);
+      console.log("ChannelServer: invitation fetched", shareId, invitation.channelId);
+    }
   }
 
   private async handleAccept(request: Request, response: Response): Promise<void> {
@@ -980,16 +1004,6 @@ export class ChannelServer implements TransportEventHandler {
     return uuid.v4();
   }
 
-  private createToken(): string {
-    let result = '';
-    const array = crypto.randomBytes(24);
-    for (let i = 0; i < 24; i++) {
-      const letter = TOKEN_LETTERS.charAt(array[i] % TOKEN_LETTERS.length);
-      result += letter;
-    }
-    return result;
-  }
-
   private processPings(): void {
     const now = Date.now();
     for (const socketId of Object.keys(this.socketInfoById)) {
@@ -1013,6 +1027,16 @@ export class ChannelServer implements TransportEventHandler {
     const message = ChannelMessageUtils.serializeControlMessage('p' + socket.pingId, 'ping', details);
     await this.transport.deliverMessage(message, socket.socketId);
     socket.lastPingSent = Date.now();
+  }
+
+  private createToken(length = 24): string {
+    let result = '';
+    const array = crypto.randomBytes(length);
+    for (let i = 0; i < length; i++) {
+      const letter = TOKEN_LETTERS.charAt(array[i] % TOKEN_LETTERS.length);
+      result += letter;
+    }
+    return result;
   }
 }
 
