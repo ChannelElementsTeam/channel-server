@@ -12,7 +12,7 @@ import { db } from "./db";
 import { UserRecord, ChannelMemberRecord, ChannelRecord, MessageRecord } from './interfaces/db-records';
 import { RegistrationResponse, ChannelServerResponse, RegistrationRequest, ChannelCreateRequest, GetChannelResponse, ChannelMemberInfo, ControlChannelMessage, ChannelParticipantInfo, AccountResponse, AccountUpdateRequest, JoinRequestDetails, JoinResponseDetails, JoinNotificationDetails, ErrorDetails, ShareRequest, ShareResponse, LeaveNotificationDetails, HistoryRequestDetails, HistoryResponseDetails, ControlMessagePayload, ProviderServiceList, ChannelListResponse, LeaveRequestDetails, ChannelOptions, HistoryMessageDetails } from './common/channel-server-messages';
 import { Utils } from "./utils";
-import { MessageInfo, ChannelMessageUtils, PingRequestDetails, ChannelDeleteResponseDetails, ChannelDeletedNotificationDetails, ShareCodeResponse, ChannelJoinRequest } from "./common/channel-server-messages";
+import { DeserializedMessage, ChannelMessageUtils, PingRequestDetails, ChannelDeleteResponseDetails, ChannelDeletedNotificationDetails, ShareCodeResponse, ChannelJoinRequest, ChannelMessage } from "./common/channel-server-messages";
 
 const TOKEN_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const MAX_HISTORY_BUFFERED_SIZE = 50000;
@@ -541,7 +541,7 @@ export class ChannelServer implements TransportEventHandler {
   // TODO: Move this message handling entirely into the transport layer using lookup tables there, and only
   // handle error cases and control messages.  This will allow the transport layer to be tuned for high performance
   // and eventually allow a single channel server to manage multiple transport switches.
-  async handleReceivedMessage(messageInfo: MessageInfo, socketId: string): Promise<MessageHandlingDirective> {
+  async handleReceivedMessage(messageInfo: ChannelMessage, socketId: string): Promise<MessageHandlingDirective> {
     const result: MessageHandlingDirective = {
       forwardMessageToSockets: [],
       deliverControlMessages: []
@@ -578,7 +578,7 @@ export class ChannelServer implements TransportEventHandler {
       return result;
     }
     if (messageInfo.history && channelInfo.options.history) {
-      await db.insertMessage(channelId, participant.participantId, messageInfo.timestamp, messageInfo.rawPayload.byteLength, messageInfo.rawPayload);
+      await db.insertMessage(channelId, participant.participantId, messageInfo.timestamp, messageInfo.serializedMessage.byteLength, messageInfo.serializedMessage);
     }
     await this.updateChannelMemberActive(channelId, socket.userId);
     for (const code of Object.keys(channelInfo.participantsByCode)) {
@@ -597,7 +597,7 @@ export class ChannelServer implements TransportEventHandler {
     return result;
   }
 
-  private async handleReceivedControlMessage(messageInfo: MessageInfo, socket: SocketInfo): Promise<MessageHandlingDirective> {
+  private async handleReceivedControlMessage(messageInfo: ChannelMessage, socket: SocketInfo): Promise<MessageHandlingDirective> {
     if (messageInfo.controlMessagePayload && messageInfo.controlMessagePayload.jsonMessage && messageInfo.controlMessagePayload.jsonMessage.type !== 'ping-reply') {
       console.log("ChannelServer: Control message received", socket.userId, socket.socketId, messageInfo.controlMessagePayload ? JSON.stringify(messageInfo.controlMessagePayload.jsonMessage) : null);
     }

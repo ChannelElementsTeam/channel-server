@@ -3,7 +3,7 @@ import { Request, Response } from 'express';
 import * as net from 'net';
 
 import { ChannelMemberRecord, UserRecord } from "./interfaces/db-records";
-import { ControlChannelMessage, ChannelMessageUtils, MessageInfo } from "./common/channel-server-messages";
+import { ControlChannelMessage, ChannelMessageUtils, DeserializedMessage, ChannelMessage } from "./common/channel-server-messages";
 
 export class TransportServer {
   private expressWs: any;
@@ -46,7 +46,7 @@ export class TransportServer {
     if (message instanceof Uint8Array) {
       const messageInfo = await ChannelMessageUtils.parseChannelMessage(message as Uint8Array);
       if (messageInfo.valid) {
-        const directive = await this.controller.handleReceivedMessage(messageInfo.info, socketId);
+        const directive = await this.controller.handleReceivedMessage(messageInfo.contents, socketId);
         for (const targetSocketId of directive.forwardMessageToSockets) {
           const socket = this.socketsById[targetSocketId];
           try {
@@ -64,7 +64,7 @@ export class TransportServer {
           }
         }
       } else {
-        console.warn("Transport: received invalid message on socket", socketId);
+        console.warn("Transport: received invalid message on socket: " + messageInfo.errorMessage, socketId);
       }
     } else {
       console.warn("Transport: received string message on socket.  Ignoring.", message);
@@ -118,7 +118,7 @@ interface ExpressWithChannelSockets extends express.Application {
 export interface TransportEventHandler {
   handleSocketConnectRequest(request: Request): Promise<string>;
   handleSocketClosed(socketId: string): Promise<void>;
-  handleReceivedMessage(messageInfo: MessageInfo, socketId: string): Promise<MessageHandlingDirective>;
+  handleReceivedMessage(messageInfo: ChannelMessage, socketId: string): Promise<MessageHandlingDirective>;
 }
 
 export interface ControlMessageDirective {

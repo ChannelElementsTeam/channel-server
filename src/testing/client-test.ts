@@ -4,7 +4,7 @@ import { configuration } from '../configuration';
 import { RegistrationRequest, RegistrationResponse, ChannelCreateRequest, ControlChannelMessage, JoinRequestDetails, ShareResponse, GetChannelResponse, JoinResponseDetails, ShareRequest, HistoryRequestDetails, HistoryResponseDetails, ChannelListResponse, LeaveRequestDetails } from '../common/channel-server-messages';
 import { client as WebSocketClient, connection, IMessage } from 'websocket';
 import { TextDecoder, TextEncoder } from 'text-encoding';
-import { ChannelMessageUtils, MessageInfo, ShareCodeResponse, ChannelJoinRequest } from "../common/channel-server-messages";
+import { ChannelMessageUtils, ShareCodeResponse, ChannelJoinRequest, DeserializedMessage, ChannelMessage, MessageToSerialize } from "../common/channel-server-messages";
 import * as url from "url";
 const RestClient = require('node-rest-client').Client;
 const basic = require('basic-authorization-header');
@@ -40,7 +40,7 @@ class TestClient {
     this.id = id;
   }
   private requestHandlersById: { [requestId: string]: (controlMessage: ControlChannelMessage) => Promise<void> } = {};
-  async handleMessage(messageInfo: MessageInfo): Promise<void> {
+  async handleMessage(messageInfo: ChannelMessage): Promise<void> {
     let handled = false;
     if (messageInfo.channelCode === 0 && messageInfo.senderCode === 0 && messageInfo.controlMessagePayload) {
       const controlMessage = messageInfo.controlMessagePayload.jsonMessage as ControlChannelMessage;
@@ -62,7 +62,7 @@ class TestClient {
       if (messageInfo.controlMessagePayload) {
         console.log("TestClient: Control Message Received", this.id, messageInfo.timestamp, JSON.stringify(messageInfo.controlMessagePayload.jsonMessage));
       } else {
-        const payloadString = new TextDecoder('utf-8').decode(messageInfo.rawPayload);
+        const payloadString = new TextDecoder('utf-8').decode(messageInfo.fullPayload);
         console.log("TestClient: Channel Message Received", this.id, messageInfo.channelCode, messageInfo.senderCode, messageInfo.timestamp, payloadString);
       }
     }
@@ -251,7 +251,11 @@ export class ClientTester {
         conn.on('message', (message: IMessage) => {
           if (message.type === 'binary') {
             const messageInfo = ChannelMessageUtils.parseChannelMessage(message.binaryData);
-            void client.handleMessage(messageInfo.info);
+            if (messageInfo.valid) {
+              void client.handleMessage(messageInfo.contents);
+            } else {
+              console.error("TestClient: Received invalid message: " + messageInfo.errorMessage);
+            }
           } else {
             console.error('TestClient: Unexpected string-type channel message', message);
           }
@@ -416,11 +420,12 @@ export class ClientTester {
   }
 
   private async send(client: TestClient, text: string): Promise<void> {
-    const messageInfo: MessageInfo = {
+    const messageInfo: MessageToSerialize = {
       channelCode: client.joinResponseDetails.channelCode,
       senderCode: client.joinResponseDetails.participantCode,
       history: true,
-      rawPayload: new TextEncoder().encode(JSON.stringify({ text: text }))
+      priority: false,
+      binaryPayload: new TextEncoder().encode(JSON.stringify({ text: text }))
     };
     const byteArray = ChannelMessageUtils.serializeChannelMessage(messageInfo, 0, 0);
     client.conn.sendBytes(new Buffer(byteArray));
