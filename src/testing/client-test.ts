@@ -54,6 +54,8 @@ class TestClient {
           await handler(controlMessage);
           handled = true;
         }
+      } else if (controlMessage.type === 'history-message') {
+        console.log("History-message", messageInfo);
       }
     }
     if (!handled) {

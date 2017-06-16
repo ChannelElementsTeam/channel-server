@@ -856,7 +856,7 @@ export class ChannelServer implements TransportEventHandler {
       const message: MessageRecord = await cursor.next();
       const values = message.contents.split(',');
       const messageBytes = new Uint8Array(values.length);
-      const view = new DataView(messageBytes.buffer);
+      const view = new DataView(messageBytes.buffer, messageBytes.byteOffset);
       for (let i = 0; i < values.length; i++) {
         view.setUint8(i, Number(values[i]));
       }
