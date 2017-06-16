@@ -214,7 +214,7 @@ export interface ChannelOptions {
 
 export class ChannelMessageUtils {
   static MESSAGE_HEADER_LENGTH = 32;
-  static CHANNEL_ELEMENTS_VERSION_V1 = 0xCE31;
+  static CHANNEL_ELEMENTS_VERSION_V1 = 0xCEB1;
 
   static serializeControlMessage(requestId: string, type: string, details: any, binaryPortion?: Uint8Array): Uint8Array {
     const controlMessage: ControlChannelMessage = {
