@@ -13,7 +13,7 @@
       "protocol": "inspector"
     },
     {
-      "name": "Braid-Typescript",
+      "name": "Channel-Server-Typescript",
       "type": "node",
       "request": "launch",
       "program": "${workspaceRoot}/src/index.ts",
