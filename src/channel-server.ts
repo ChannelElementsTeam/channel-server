@@ -242,14 +242,6 @@ export class ChannelServer implements TransportEventHandler {
       return;
     }
     if (request.accepts('json')) {
-      response.render('sharecode', {
-        helpers: {
-          sharecode: () => {
-            return url.resolve(this.restBaseUrl, '/i/' + invitation.id);
-          }
-        }
-      });
-    } else {
       const reply: ShareCodeResponse = {
         providerUrl: this.providerUrl,
         registrationUrl: this.getServicesList().registrationUrl,
@@ -259,6 +251,14 @@ export class ChannelServer implements TransportEventHandler {
       };
       response.json(reply);
       console.log("ChannelServer: invitation fetched", shareId, invitation.channelId);
+    } else {
+      response.render('sharecode', {
+        helpers: {
+          sharecode: () => {
+            return url.resolve(this.restBaseUrl, '/i/' + invitation.id);
+          }
+        }
+      });
     }
   }
 
