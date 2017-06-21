@@ -25,5 +25,13 @@
   "client": {
     "ssl": false,
     "port": 31111
+  },
+  "debug": {
+    "transport": {
+      "log": {
+        "rx": true,
+        "tx": true
+      }
+    }
   }
 }

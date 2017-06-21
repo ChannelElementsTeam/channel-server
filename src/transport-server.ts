@@ -4,6 +4,7 @@ import * as net from 'net';
 
 import { ChannelMemberRecord, UserRecord } from "./interfaces/db-records";
 import { ControlChannelMessage, ChannelMessageUtils, DeserializedMessage, ChannelMessage } from "./common/channel-server-messages";
+import { configuration } from "./configuration";
 
 export class TransportServer {
   private expressWs: any;
@@ -11,13 +12,17 @@ export class TransportServer {
   private wsapp: ExpressWithChannelSockets;
   private controller: TransportEventHandler;
   private socketsById: { [socketId: string]: ChannelSocket } = {};
-  relativeTransportUrl: string;
+  private relativeTransportUrl: string;
+  private logRx: boolean;
+  private logTx: boolean;
 
   constructor(app: express.Application, server: net.Server, controller: TransportEventHandler, relativeTransportUrl: string) {
     require('express-ws')(app, server);
     this.wsapp = app as ExpressWithChannelSockets;
     this.controller = controller;
     this.relativeTransportUrl = relativeTransportUrl;
+    this.logRx = configuration.get('debug.transport.log.rx', false) as boolean;
+    this.logTx = configuration.get('debug.transport.log.tx', false) as boolean;
   }
 
   start(): void {
@@ -45,12 +50,18 @@ export class TransportServer {
   private async handleChannelSocketMessage(ws: ChannelSocket, message: Uint8Array | string, socketId: string): Promise<void> {
     if (message instanceof Uint8Array) {
       const messageInfo = await ChannelMessageUtils.parseChannelMessage(message as Uint8Array);
+      if (this.logRx) {
+        console.log("Transport: Rx ", socketId, messageInfo.valid, messageInfo.errorMessage, messageInfo.contents.channelCode, messageInfo.contents.senderCode, messageInfo.contents.timestamp, messageInfo.contents.fullPayload.length);
+      }
       if (messageInfo.valid) {
         const directive = await this.controller.handleReceivedMessage(messageInfo.contents, socketId);
         for (const targetSocketId of directive.forwardMessageToSockets) {
           const socket = this.socketsById[targetSocketId];
           try {
             socket.send(message);
+            if (this.logTx) {
+              console.log("Transport: Tx (switched)", targetSocketId, message.byteLength);
+            }
           } catch (err) {
             console.warn("Transport: Failure trying to send on socket", socketId, err);
           }

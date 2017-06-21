@@ -529,6 +529,8 @@ export class ChannelServer implements TransportEventHandler {
         }
         await this.handleParticipantLeft(channelInfo, participantInfo, socketInfo, false);
       }
+    } else {
+      console.error("ChannelServer: handleSocketClosed: socket missing");
     }
   }
 
