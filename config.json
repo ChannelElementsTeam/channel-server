@@ -1,5 +1,5 @@
 {
-  "domain": "braid-staging.com",
+  "domain": "channelelements.net",
   "serverId": "DEV",
   "baseClientUri": "http://localhost:31111",
   "baseTransportUri": "ws://localhost:31111",
