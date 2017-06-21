@@ -1010,7 +1010,7 @@ export class ChannelServer implements TransportEventHandler {
     const now = Date.now();
     for (const socketId of Object.keys(this.socketInfoById)) {
       const socket = this.socketInfoById[socketId];
-      if (socket.isOpen && now - socket.lastPingReply > this.pingTimeout) {
+      if (socket.isOpen && now - socket.lastPingSent > this.pingTimeout && socket.lastPingReply < socket.lastPingSent) {
         console.warn("ChannelServer: Timeout waiting for ping-reply", socket.socketId, socket.userId);
         this.transport.closeSocket(socket.socketId);
       } else if (socket.isOpen && now - socket.lastPingSent > this.pingInterval) {
