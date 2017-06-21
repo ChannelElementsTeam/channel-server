@@ -12,7 +12,7 @@ export class TransportServer {
   private wsapp: ExpressWithChannelSockets;
   private controller: TransportEventHandler;
   private socketsById: { [socketId: string]: ChannelSocket } = {};
-  private relativeTransportUrl: string;
+  relativeTransportUrl: string;
   private logRx: boolean;
   private logTx: boolean;
 
