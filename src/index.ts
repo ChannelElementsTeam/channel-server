@@ -180,7 +180,7 @@ class ChannelElementsServer {
   }
 
   private setupServerPing(): void {
-    this.app.get(DYNAMIC_BASE + '/ping', (request: Request, response: Response) => {
+    this.app.get('/ping', (request: Request, response: Response) => {
       response.setHeader('Cache-Control', 'no-cache, no-store, max-age=0, must-revalidate');
       response.setHeader('Content-Type', 'application/json');
       const result: any = {
