@@ -48,7 +48,7 @@ export class ChannelServer implements TransportEventHandler {
     this.restBaseUrl = restBaseUrl;
     this.restRelativeBaseUrl = restRelativeBaseUrl;
     this.transportBaseUrl = transportBaseUrl;
-    this.transportUrl = this.transportBaseUrl + this.transport.relativeTransportUrl;
+    this.transportUrl = this.transportBaseUrl + relativeTransportUrl;
     this.registerHandlers(restRelativeBaseUrl);
     this.transport = new TransportServer(app, server, this, relativeTransportUrl);
     this.pingInterval = pingInterval;
