@@ -30,6 +30,7 @@ export class ChannelServer implements TransportEventHandler {
   private lastChannelCheck = Date.now();
   private app: express.Application;
   private transport: TransportServer;
+  private transportUrl: string;
 
   private channelIdByCode: { [code: string]: string } = {};
   private channelInfoById: { [channelId: string]: ChannelInfo } = {};
@@ -47,6 +48,7 @@ export class ChannelServer implements TransportEventHandler {
     this.restBaseUrl = restBaseUrl;
     this.restRelativeBaseUrl = restRelativeBaseUrl;
     this.transportBaseUrl = transportBaseUrl;
+    this.transportUrl = this.transportBaseUrl + this.transport.relativeTransportUrl;
     this.registerHandlers(restRelativeBaseUrl);
     this.transport = new TransportServer(app, server, this, relativeTransportUrl);
     this.pingInterval = pingInterval;
@@ -296,13 +298,12 @@ export class ChannelServer implements TransportEventHandler {
       return;
     }
     const channelRequest = request.body as ChannelCreateRequest;
-    const transportUrl = this.transportBaseUrl + this.transport.relativeTransportUrl;
     // This is assigning the transport responsibility for this channel to my own server.  When running with multiple
     // servers, this means that I'm balancing the switching load over those servers, too.  We just have to make sure
     // that REST requests that need to be handled by the server doing the transport arrive on the correct server.
     const channelId = this.createId();
     const options = this.fillAllOptions(channelRequest && channelRequest.options ? channelRequest.options : {});
-    const channelRecord = await db.insertChannel(channelId, user.id, transportUrl, options, channelRequest ? channelRequest.channelDetails : null, 'active');
+    const channelRecord = await db.insertChannel(channelId, user.id, this.transportUrl, options, channelRequest ? channelRequest.channelDetails : null, 'active');
     const now = Date.now();
     const channelInfo: ChannelInfo = {
       code: this.allocateChannelCode(),
@@ -403,7 +404,7 @@ export class ChannelServer implements TransportEventHandler {
   private async handleGetChannelResponse(channelRecord: ChannelRecord, user: UserRecord, request: Request, response: Response): Promise<GetChannelResponse> {
     const reply: GetChannelResponse = {
       channelId: channelRecord.channelId,
-      transportUrl: this.transportBaseUrl + this.transport.relativeTransportUrl,
+      transportUrl: channelRecord.transportUrl,
       registerUrl: this.getServicesList().registrationUrl,
       channelUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/channels/' + channelRecord.channelId),
       options: channelRecord.options,
@@ -448,7 +449,7 @@ export class ChannelServer implements TransportEventHandler {
       if (channelRecord && channelRecord.status === 'active') {
         const channelDetails: GetChannelResponse = {
           channelId: record.channelId,
-          transportUrl: this.transportBaseUrl + this.transport.relativeTransportUrl,
+          transportUrl: channelRecord.transportUrl,
           registerUrl: this.getServicesList().registrationUrl,
           channelUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/channels/' + channelRecord.channelId),
           options: channelRecord.options,
@@ -675,6 +676,10 @@ export class ChannelServer implements TransportEventHandler {
     const channelRecord = await db.findChannelById(requestDetails.channelId);
     if (!channelRecord) {
       result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 404, "No such channel", null));
+      return result;
+    }
+    if (channelRecord.transportUrl !== this.transportUrl) {
+      result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 404, "This switch is not responsible for this channel", requestDetails ? requestDetails.channelId : null));
       return result;
     }
     const channelMemberRecord = await db.findChannelMember(channelRecord.channelId, socket.userId);
