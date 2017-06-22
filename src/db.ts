@@ -60,7 +60,6 @@ export class Database {
     const record: UserRecord = {
       id: id,
       token: token,
-      identity: identity,
       created: now,
       lastRequest: now,
       status: status

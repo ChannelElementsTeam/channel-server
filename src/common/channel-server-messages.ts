@@ -34,7 +34,6 @@ export interface RegistrationResponse {
 export interface AccountResponse {
   id: string;
   services: ProviderServiceList;
-  identity: any;
 }
 
 export interface ProviderServiceList {
@@ -167,6 +166,7 @@ export interface JoinResponseDetails {
 
 export interface LeaveRequestDetails {
   channelAddress: string;
+  memberAddress: string;
   permanently?: boolean;
 }
 

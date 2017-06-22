@@ -456,6 +456,7 @@ export class ClientTester {
   private leaveChannel(client: TestClient, permanently: boolean): Promise<void> {
     const details: LeaveRequestDetails = {
       channelAddress: client.channelResponse.channelAddress,
+      memberAddress: client.identity.address,
       permanently: permanently
     };
     const requestId = client.requestIndex.toString();

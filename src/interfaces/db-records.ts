@@ -4,7 +4,6 @@ import { ChannelOptions, ChannelContractDetails, ChannelMemberIdentity } from ".
 export interface UserRecord {
   id: string;
   token: string;
-  identity: any;
   created: number;
   lastRequest: number;
   status: string;

@@ -33,10 +33,10 @@ export class ChannelServer implements TransportEventHandler {
   private transportUrl: string;
 
   private channelAddressByCode: { [code: string]: string } = {};
-  private channelInfoById: { [channelAddress: string]: ChannelInfo } = {};
+  private channelInfoByAddress: { [channelAddress: string]: ChannelInfo } = {};
   private socketInfoById: { [socketId: string]: SocketInfo } = {};
 
-  private socketIdsByUserId: { [userId: string]: string[] } = {};
+  // private socketIdsByUserId: { [userId: string]: string[] } = {};
   private lastAllocatedChannelCode = 0;
 
   registrationUrl: string;
@@ -175,8 +175,7 @@ export class ChannelServer implements TransportEventHandler {
     }
     const reply: AccountResponse = {
       id: user.id,
-      services: this.getServicesList(),
-      identity: user.identity
+      services: this.getServicesList()
     };
     console.log("ChannelServer: account fetched", user.id);
     response.json(reply);
@@ -314,9 +313,9 @@ export class ChannelServer implements TransportEventHandler {
       participantsByUserId: {},
       lastAllocatedCode: 0,
       contract: channelRecord.contract,
-      creatorUserId: user.id
+      creatorAddress: channelRequest.creatorIdentity.address
     };
-    this.channelInfoById[channelRecord.channelAddress] = channelInfo;
+    this.channelInfoByAddress[channelRecord.channelAddress] = channelInfo;
     this.channelAddressByCode[channelInfo.code] = channelRecord.channelAddress;
     const participantAddress = this.createId();
     await db.insertChannelMember(channelAddress, channelRequest.creatorIdentity, user.id, 'active');
@@ -381,21 +380,25 @@ export class ChannelServer implements TransportEventHandler {
     const updatedChannels = await db.findUpdatedChannels(lastCheck);
     for (const channelRecord of updatedChannels) {
       if (channelRecord.status !== 'active') {
-        const channelInfo = this.channelInfoById[channelRecord.channelAddress];
+        const channelInfo = this.channelInfoByAddress[channelRecord.channelAddress];
         if (channelInfo) {
-          for (const participantAddress of Object.keys(channelInfo.participantsByAddress)) {
-            const participant = channelInfo.participantsByAddress[participantAddress];
+          for (const code of Object.keys(channelInfo.participantsByCode)) {
+            const participant = channelInfo.participantsByCode[code];
             const socket = this.socketInfoById[participant.socketId];
             const details: ChannelDeletedNotificationDetails = {
               channelAddress: channelRecord.channelAddress
             };
             const message = ChannelMessageUtils.serializeControlMessage(null, 'channel-deleted', details);
             await this.transport.deliverMessage(message, socket.socketId);
-            if (socket.channelAddresses.indexOf(channelRecord.channelAddress) >= 0) {
-              socket.channelAddresses.splice(socket.channelAddresses.indexOf(channelRecord.channelAddress), 1);
+            const updatedParticipations: ChannelMemberAddressPair[] = [];
+            for (const pair of socket.participations) {
+              if (pair.channelAddress !== channelRecord.channelAddress) {
+                updatedParticipations.push(pair);
+              }
             }
+            socket.participations = updatedParticipations;
           }
-          delete this.channelInfoById[channelRecord.channelAddress];
+          delete this.channelInfoByAddress[channelRecord.channelAddress];
           delete this.channelAddressByCode[channelInfo.code];
         }
       }
@@ -486,19 +489,19 @@ export class ChannelServer implements TransportEventHandler {
     this.socketInfoById[socketId] = {
       socketId: socketId,
       userId: user.id,
-      channelAddresses: [],
+      participations: [],
       isOpen: true,
       lastPingSent: now,
       lastPingReply: now,
       pingId: 1,
       lastTimestampReceived: 0
     };
-    let socketIds = this.socketIdsByUserId[user.id];
-    if (!socketIds) {
-      socketIds = [];
-      this.socketIdsByUserId[user.id] = socketIds;
-    }
-    socketIds.push(socketId);
+    // let socketIds = this.socketIdsByUserId[user.id];
+    // if (!socketIds) {
+    //   socketIds = [];
+    //   this.socketIdsByUserId[user.id] = socketIds;
+    // }
+    // socketIds.push(socketId);
     console.log("ChannelServer: socket connected", user.id, socketId);
     return socketId;
   }
@@ -508,24 +511,18 @@ export class ChannelServer implements TransportEventHandler {
     if (socketInfo) {
       socketInfo.isOpen = false;
       console.log("ChannelServer: handleSocketClosed", socketId, socketInfo.userId);
-      const socketIds = this.socketIdsByUserId[socketInfo.userId];
-      if (socketIds && socketIds.indexOf(socketId) >= 0) {
-        socketIds.splice(socketIds.indexOf(socketId), 1);
-        if (socketIds.length === 0) {
-          delete this.socketIdsByUserId[socketInfo.userId];
-        }
-      }
       delete this.socketInfoById[socketId];
-      for (const channelAddress of socketInfo.channelAddresses) {
-        const channelInfo = this.channelInfoById[channelAddress];
+      for (const participation of socketInfo.participations) {
+        const channelInfo = this.channelInfoByAddress[participation.channelAddress];
         if (!channelInfo) {
           throw new Error("handleSocketClosed: channel missing");
         }
-        const participantInfo = channelInfo.participantsByUserId[socketInfo.userId];
-        if (!participantInfo) {
-          throw new Error("handleSocketClosed: participant missing");
+        const participantInfos = channelInfo.participantsByUserId[socketInfo.userId];
+        if (participantInfos) {
+          for (const participantInfo of participantInfos) {
+            await this.handleParticipantLeft(channelInfo, participantInfo, socketInfo, false);
+          }
         }
-        await this.handleParticipantLeft(channelInfo, participantInfo, socketInfo, false);
       }
     } else {
       console.error("ChannelServer: handleSocketClosed: socket missing");
@@ -534,11 +531,31 @@ export class ChannelServer implements TransportEventHandler {
 
   private async handleParticipantLeft(channel: ChannelInfo, participant: ParticipantInfo, socket: SocketInfo, permanently: boolean): Promise<number> {
     delete channel.participantsByCode[participant.code];
-    delete channel.participantsByAddress[participant.memberIdentity.address];
-    delete channel.participantsByUserId[participant.userId];
-    if (socket.channelAddresses.indexOf(channel.channelAddress) >= 0) {
-      socket.channelAddresses.splice(socket.channelAddresses.indexOf(channel.channelAddress), 1);
+    if (channel.participantsByAddress[participant.memberIdentity.address]) {
+      const index = channel.participantsByAddress[participant.memberIdentity.address].indexOf(participant);
+      if (index >= 0) {
+        channel.participantsByAddress[participant.memberIdentity.address].splice(index, 1);
+        if (channel.participantsByAddress[participant.memberIdentity.address].length === 0) {
+          delete channel.participantsByAddress[participant.memberIdentity.address];
+        }
+      }
     }
+    if (channel.participantsByUserId[participant.userId]) {
+      const index = channel.participantsByUserId[participant.userId].indexOf(participant);
+      if (index >= 0) {
+        channel.participantsByUserId[participant.userId].splice(index, 1);
+        if (channel.participantsByUserId[participant.userId].length === 0) {
+          delete channel.participantsByUserId[participant.userId];
+        }
+      }
+    }
+    const updatedParticipations: ChannelMemberAddressPair[] = [];
+    for (const pair of socket.participations) {
+      if (pair.channelAddress !== channel.channelAddress || pair.memberAddress !== participant.memberIdentity.address) {
+        updatedParticipations.push(pair);
+      }
+    }
+    socket.participations = updatedParticipations;
     let count = 0;
     if (channel.contract.channelContract.options.topology === 'many-to-many') {
       for (const code of Object.keys(channel.participantsByCode)) {
@@ -558,7 +575,7 @@ export class ChannelServer implements TransportEventHandler {
     if (Object.keys(channel.participantsByCode).length === 0) {
       console.log("ChannelServer: Last participant left channel.  Removing active channel.", channel.channelAddress, channel.code);
       delete this.channelAddressByCode[channel.code];
-      delete this.channelInfoById[channel.channelAddress];
+      delete this.channelInfoByAddress[channel.channelAddress];
     }
     return count;
   }
@@ -587,12 +604,7 @@ export class ChannelServer implements TransportEventHandler {
       result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 404, "Unknown channel code", channelAddress));
       return result;  // sending to an unknown channel
     }
-    const index = socket.channelAddresses.indexOf(channelAddress);
-    if (index < 0) {
-      result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 403, "You have not yet joined this channel, so cannot send to it", channelAddress));
-      return result;  // sending on an illegal channel
-    }
-    const channelInfo = this.channelInfoById[channelAddress];
+    const channelInfo = this.channelInfoByAddress[channelAddress];
     if (!channelInfo) {
       result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 500, "Server error: channel information missing", channelAddress));
       return result;  // no channel information available for some reason
@@ -602,23 +614,34 @@ export class ChannelServer implements TransportEventHandler {
       result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 403, "You have not been assigned this sender code on that channel", channelAddress));
       return result;  // sending with illegal sender code
     }
-    if (channelInfo.contract.channelContract.options.topology === 'one-to-many' && socket.userId !== channelInfo.creatorUserId) {
+    let pairFound = false;
+    for (const pair of socket.participations) {
+      if (pair.channelAddress === channelAddress && pair.memberAddress === participant.memberIdentity.address) {
+        pairFound = true;
+        break;
+      }
+    }
+    if (!pairFound) {
+      result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 403, "You have not yet joined this channel, so cannot send to it", channelAddress));
+      return result;  // sending on an illegal channel
+    }
+    if (channelInfo.contract.channelContract.options.topology === 'one-to-many' && participant.memberIdentity.address !== channelInfo.creatorAddress) {
       result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 403, "This is a one-to-many channel.  Only the creator is allowed to send messages.", channelAddress));
       return result;
     }
     if (messageInfo.history && channelInfo.contract.channelContract.options.history) {
       await db.insertMessage(channelAddress, participant.memberIdentity.address, messageInfo.timestamp, messageInfo.serializedMessage.byteLength, messageInfo.serializedMessage);
     }
-    await this.updateChannelMemberActive(channelAddress, socket.userId);
+    await this.updateChannelMemberActive(channelAddress, participant.memberIdentity.address, socket.userId);
+    const socketIds: string[] = [];
     for (const code of Object.keys(channelInfo.participantsByCode)) {
-      const p = channelInfo.participantsByCode[code];
-      if (channelInfo.contract.channelContract.options.topology === 'many-to-one' && p.userId !== channelInfo.creatorUserId && participant.userId !== channelInfo.creatorUserId) {
-        continue;
-      }
-      const sids = this.socketIdsByUserId[p.userId];
-      for (const sid of sids) {
-        if (sid !== socketId) {
-          result.forwardMessageToSockets.push(sid);
+      if (code !== messageInfo.senderCode.toString()) {
+        const p = channelInfo.participantsByCode[code];
+        if (channelInfo.contract.channelContract.options.topology === 'many-to-one' && p.memberIdentity.address !== channelInfo.creatorAddress && participant.memberIdentity.address !== channelInfo.creatorAddress) {
+          continue;
+        }
+        if (p.socketId !== socketId && result.forwardMessageToSockets.indexOf(p.socketId) < 0) {
+          result.forwardMessageToSockets.push(p.socketId);
         }
       }
     }
@@ -684,7 +707,7 @@ export class ChannelServer implements TransportEventHandler {
       result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 403, "You are not a member", null));
       return;
     }
-    let channelInfo = this.channelInfoById[channelRecord.channelAddress];
+    let channelInfo = this.channelInfoByAddress[channelRecord.channelAddress];
     if (!channelInfo) {
       // This channel has no active participants right now.  So we'll allocate a new code for it
       channelInfo = {
@@ -695,9 +718,9 @@ export class ChannelServer implements TransportEventHandler {
         participantsByUserId: {},
         lastAllocatedCode: 0,
         contract: channelRecord.contract,
-        creatorUserId: channelRecord.creatorUserId
+        creatorAddress: channelRecord.creatorAddress
       };
-      this.channelInfoById[channelRecord.channelAddress] = channelInfo;
+      this.channelInfoByAddress[channelRecord.channelAddress] = channelInfo;
       this.channelAddressByCode[channelInfo.code] = channelRecord.channelAddress;
     }
     for (const code of Object.keys(channelInfo.participantsByCode)) {
@@ -711,7 +734,6 @@ export class ChannelServer implements TransportEventHandler {
     const now = Date.now();
     const memberIdentity = channelMemberRecord.identity;
     await db.updateChannelMemberActive(channelMemberRecord.channelAddress, channelMemberRecord.userId, 'active', now, null);
-    socket.channelAddresses.push(channelInfo.channelAddress);
     const participant: ParticipantInfo = {
       memberIdentity: memberIdentity,
       participantIdentityDetails: requestDetails.participantIdentityDetails,
@@ -723,9 +745,18 @@ export class ChannelServer implements TransportEventHandler {
       memberSince: channelMemberRecord.added,
       lastActive: now
     };
+    socket.participations.push({ channelAddress: channelInfo.channelAddress, memberAddress: participant.memberIdentity.address });
     channelInfo.participantsByCode[participant.code] = participant;
-    channelInfo.participantsByAddress[participant.memberIdentity.address] = participant;
-    channelInfo.participantsByUserId[participant.userId] = participant;
+    let participantList = channelInfo.participantsByAddress[participant.memberIdentity.address];
+    if (!participantList) {
+      participantList = [];
+    }
+    participantList.push(participant);
+    participantList = channelInfo.participantsByUserId[participant.userId];
+    if (!participantList) {
+      participantList = [];
+    }
+    participantList.push(participant);
     const joinResponseDetails: JoinResponseDetails = {
       channelAddress: channelRecord.channelAddress,
       channelCode: channelInfo.code,
@@ -800,12 +831,23 @@ export class ChannelServer implements TransportEventHandler {
       result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 404, "No such channel", requestDetails.channelAddress));
       return result;
     }
-    const channelInfo = this.channelInfoById[channelRecord.channelAddress];
+    const channelInfo = this.channelInfoByAddress[channelRecord.channelAddress];
     if (!channelInfo) {
       result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 403, "This channel is not active", requestDetails.channelAddress));
       return result;
     }
-    const participant = channelInfo.participantsByUserId[socket.userId];
+    const participants = channelInfo.participantsByUserId[socket.userId];
+    if (!participants) {
+      result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 403, "You cannot leave a channel that you haven't joined.", requestDetails.channelAddress));
+      return result;
+    }
+    let participant: ParticipantInfo;
+    for (const p of participants) {
+      if (p.memberIdentity.address === requestDetails.memberAddress) {
+        participant = p;
+        break;
+      }
+    }
     if (!participant) {
       result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 403, "You cannot leave a channel that you haven't joined.", requestDetails.channelAddress));
       return result;
@@ -828,13 +870,18 @@ export class ChannelServer implements TransportEventHandler {
     return result;
   }
 
-  private async updateChannelMemberActive(channelAddress: string, userId: string): Promise<void> {
+  private async updateChannelMemberActive(channelAddress: string, memberAddress: string, userId: string): Promise<void> {
     const now = Date.now();
-    const channelInfo = this.channelInfoById[channelAddress];
+    const channelInfo = this.channelInfoByAddress[channelAddress];
     if (channelInfo) {
-      const participantInfo = channelInfo.participantsByUserId[userId];
-      if (participantInfo) {
-        participantInfo.lastActive = now;
+      const participants = channelInfo.participantsByUserId[userId];
+      if (participants) {
+        for (const participant of participants) {
+          if (participant.memberIdentity.address === memberAddress) {
+            participant.lastActive = now;
+            break;
+          }
+        }
       }
     }
     await db.updateChannelMemberActive(channelAddress, userId, 'active', now);
@@ -877,7 +924,7 @@ export class ChannelServer implements TransportEventHandler {
     };
     result.deliverControlMessages.push(directive);
     void this.processHistoryRequestAsync(channelRecord, socket, requestDetails, responseDetails.count);
-    await this.updateChannelMemberActive(channelRecord.channelAddress, socket.userId);
+    await this.updateChannelMemberActive(channelRecord.channelAddress, channelMemberRecord.identity.address, socket.userId);
     return result;
   }
 
@@ -1058,17 +1105,22 @@ interface ChannelInfo {
   code: number;
   channelAddress: string;
   participantsByCode: { [code: string]: ParticipantInfo };
-  participantsByAddress: { [id: string]: ParticipantInfo };
-  participantsByUserId: { [userId: string]: ParticipantInfo };
+  participantsByAddress: { [address: string]: ParticipantInfo[] };
+  participantsByUserId: { [userId: string]: ParticipantInfo[] };
   lastAllocatedCode: number;
   contract: ChannelContractDetails;
-  creatorUserId: string;
+  creatorAddress: string;
+}
+
+interface ChannelMemberAddressPair {
+  channelAddress: string;
+  memberAddress: string;
 }
 
 interface SocketInfo {
   socketId: string;
   userId: string;
-  channelAddresses: string[];
+  participations: ChannelMemberAddressPair[];
   isOpen: boolean;
   lastPingSent: number;
   lastPingReply: number;
