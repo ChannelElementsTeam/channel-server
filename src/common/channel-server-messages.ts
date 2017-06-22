@@ -53,7 +53,7 @@ export interface AccountUpdateRequest {
 }
 
 export interface ShareRequest {
-  channelId: string;
+  channelAddress: string;
   details: any;
 }
 
@@ -71,30 +71,46 @@ export interface ShareCodeResponse {
 
 export interface ChannelJoinRequest {
   invitationId: string;
+  identity: ChannelMemberIdentity;
+}
+
+export interface ChannelContractInfo {
+  options: ChannelOptions;
+  details: any;
+}
+export interface ParticipationContract {
+  type: string;
+  details?: any;
+}
+export interface ChannelContractDetails {
+  channelContract: ChannelContractInfo;
+  participationContract: ParticipationContract;
+}
+
+export interface ChannelMemberIdentity {
+  address: string;
   details: any;
 }
 
 export interface ChannelCreateRequest {
-  options?: ChannelOptions;
-  channelDetails?: any;
-  participantDetails?: any;
+  channelAddress: string;
+  creatorIdentity: ChannelMemberIdentity;
+  contract: ChannelContractDetails;
 }
 
 export interface ChannelMemberInfo {
-  participantId: string;
-  details: any;
+  identity: ChannelMemberIdentity;
   isCreator: boolean;
   memberSince: number;
   lastActive: number;
 }
 
 export interface GetChannelResponse {
-  channelId: string;
+  channelAddress: string;
   transportUrl: string;
   registerUrl: string;
   channelUrl: string;
-  options: ChannelOptions;
-  details: any;
+  contract: ChannelContractDetails;
   isCreator: boolean;
   memberCount: number;
   recentlyActiveMembers: ChannelMemberInfo[];
@@ -103,7 +119,7 @@ export interface GetChannelResponse {
 }
 
 export interface ChannelDeleteResponseDetails {
-  channelId: string;
+  channelAddress: string;
 }
 
 export interface ChannelListResponse {
@@ -111,10 +127,14 @@ export interface ChannelListResponse {
   channels: GetChannelResponse[];
 }
 
+export interface ChannelParticipantIdentity {
+  memberIdentity: ChannelMemberIdentity;
+  participantDetails: any;
+}
+
 export interface ChannelParticipantInfo {
-  participantId: string;
   code: number;
-  details: any;
+  participantIdentity: ChannelParticipantIdentity;
   isCreator: boolean;
   isYou: boolean;
   memberSince: number;
@@ -124,28 +144,34 @@ export interface ChannelParticipantInfo {
 export interface ControlChannelMessage {
   requestId?: string;
   type: string; // see https://github.com/ChannelElementsTeam/channel-server/wiki/Control-Channel-Messages
-  details: any; // depends on type
+  details: JoinRequestDetails | JoinResponseDetails | JoinNotificationDetails |
+  LeaveRequestDetails | LeaveNotificationDetails |
+  HistoryRequestDetails | HistoryResponseDetails | HistoryMessageDetails |
+  PingRequestDetails | ErrorDetails | RateLimitDetails |
+  ChannelDeleteResponseDetails | ChannelDeletedNotificationDetails; // depends on type
 }
 
 export interface JoinRequestDetails {
-  channelId: string;
+  channelAddress: string;
+  memberAddress: string;
+  participantIdentityDetails: any;
 }
 
 export interface JoinResponseDetails {
-  channelId: string;
+  channelAddress: string;
   channelCode: number;
-  participantId: string;
+  participantAddress: string;
   participantCode: number;
   participants: ChannelParticipantInfo[];
 }
 
 export interface LeaveRequestDetails {
-  channelId: string;
+  channelAddress: string;
   permanently?: boolean;
 }
 
 export interface HistoryRequestDetails {
-  channelId: string;
+  channelAddress: string;
   before: number;
   after?: number;
   maxCount: number;
@@ -158,8 +184,8 @@ export interface HistoryResponseDetails {
 
 export interface HistoryMessageDetails {
   timestamp: number;
-  channelId: string;
-  participantId: string;
+  channelAddress: string;
+  senderAddress: string;
 }
 
 export interface PingRequestDetails {
@@ -169,30 +195,31 @@ export interface PingRequestDetails {
 export interface ErrorDetails {
   statusCode: number;
   errorMessage: string;
-  channelId?: string;
+  channelAddress?: string;
 }
 
 export interface RateLimitDetails {
-  channelId: string;
+  channelAddress: string;
   options: string[];
 }
 
 export interface JoinNotificationDetails {
-  channelId: string;
-  participantId: string;
+  channelAddress: string;
+  memberIdentity: ChannelMemberIdentity;
+
   participantCode: number;
   participantDetails: any;
 }
 
 export interface LeaveNotificationDetails {
-  channelId: string;
-  participantId: string;
+  channelAddress: string;
+  participantAddress: string;
   participantCode: number;
   permanently: boolean;
 }
 
 export interface ChannelDeletedNotificationDetails {
-  channelId: string;
+  channelAddress: string;
 }
 
 export interface ControlMessagePayload {
@@ -209,7 +236,7 @@ export interface ChannelOptions {
   maxPayloadSize?: number;
   maxMessageRate?: number;
   maxDataRate?: number;
-  topology?: string; // many-to-many, one-to-many, many-to-one
+  topology: string; // many-to-many, one-to-many, many-to-one
 }
 
 export class ChannelMessageUtils {

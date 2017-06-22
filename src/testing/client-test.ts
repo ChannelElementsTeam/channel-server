@@ -4,8 +4,9 @@ import { configuration } from '../configuration';
 import { RegistrationRequest, RegistrationResponse, ChannelCreateRequest, ControlChannelMessage, JoinRequestDetails, ShareResponse, GetChannelResponse, JoinResponseDetails, ShareRequest, HistoryRequestDetails, HistoryResponseDetails, ChannelListResponse, LeaveRequestDetails } from '../common/channel-server-messages';
 import { client as WebSocketClient, connection, IMessage } from 'websocket';
 import { TextDecoder, TextEncoder } from 'text-encoding';
-import { ChannelMessageUtils, ShareCodeResponse, ChannelJoinRequest, DeserializedMessage, ChannelMessage, MessageToSerialize } from "../common/channel-server-messages";
+import { ChannelMessageUtils, ShareCodeResponse, ChannelJoinRequest, DeserializedMessage, ChannelMessage, MessageToSerialize, ChannelMemberIdentity, ChannelContractDetails } from "../common/channel-server-messages";
 import * as url from "url";
+import { EntityAddress } from "../common/entity-address";
 const RestClient = require('node-rest-client').Client;
 const basic = require('basic-authorization-header');
 
@@ -26,6 +27,7 @@ interface IRestClient {
 
 class TestClient {
   id: string;
+  identity: ChannelMemberIdentity;
   registrationResponse?: RegistrationResponse;
   socket?: WebSocketClient;
   conn?: connection;
@@ -36,8 +38,11 @@ class TestClient {
   shareCodeResponse?: ShareCodeResponse;
   joinResponseDetails?: JoinResponseDetails;
 
-  constructor(id: string) {
-    this.id = id;
+  constructor() {
+    this.identity = {
+      address: EntityAddress.generate().toString(),
+      details: {}
+    };
   }
   private requestHandlersById: { [requestId: string]: (controlMessage: ControlChannelMessage) => Promise<void> } = {};
   async handleMessage(messageInfo: ChannelMessage): Promise<void> {
@@ -103,12 +108,12 @@ export class ClientTester {
       response.status(400).send("Missing id param");
       return;
     }
-    const client = new TestClient(id);
+    const client = new TestClient();
     this.clientsById[id] = client;
     await this.register(client, name, url.resolve(configuration.get('baseClientUri'), '/d/register'));
     await this.createChannel(client, name);
     await this.openSocket(client);
-    await this.joinChannel(client);
+    await this.joinChannel(client, name);
     await this.shareChannel(client, name);
     await this.listChannels(client);
     await this.send(client, "This is just after channel creation.");
@@ -127,13 +132,13 @@ export class ClientTester {
       response.status(400).send("Missing from param");
       return;
     }
-    const client = new TestClient(id);
+    const client = new TestClient();
     this.clientsById[id] = client;
     await this.getShare(client, from);
     await this.register(client, name, (client.shareCodeResponse).registrationUrl);
     await this.accept(client, name);
     await this.openSocket(client);
-    await this.joinChannel(client);
+    await this.joinChannel(client, name);
     await this.requestHistory(client);
     await this.listChannels(client);
     response.end();
@@ -209,10 +214,23 @@ export class ClientTester {
   }
 
   private async createChannel(client: TestClient, name: string): Promise<void> {
+    const contract: ChannelContractDetails = {
+      channelContract: {
+        options: {
+          history: true,
+          topology: 'many-to-many'
+        },
+        details: {}
+      },
+      participationContract: {
+        type: "https://channelelements.com/contracts/test1",
+        details: {}
+      }
+    };
     const createRequest: ChannelCreateRequest = {
-      options: null,
-      channelDetails: {},
-      participantDetails: { name: name }
+      channelAddress: EntityAddress.generate().toString(),
+      creatorIdentity: client.identity,
+      contract: contract
     };
     const args: PostArgs = {
       data: createRequest,
@@ -268,9 +286,11 @@ export class ClientTester {
     });
   }
 
-  private async joinChannel(client: TestClient): Promise<void> {
+  private async joinChannel(client: TestClient, name: string): Promise<void> {
     const details: JoinRequestDetails = {
-      channelId: client.channelResponse.channelId
+      channelAddress: client.channelResponse.channelAddress,
+      memberAddress: client.identity.address,
+      participantIdentityDetails: { name: name }
     };
     const requestId = client.requestIndex.toString();
     client.requestIndex++;
@@ -289,7 +309,7 @@ export class ClientTester {
 
   private async requestHistory(client: TestClient): Promise<void> {
     const details: HistoryRequestDetails = {
-      channelId: client.channelResponse.channelId,
+      channelAddress: client.channelResponse.channelAddress,
       before: Date.now(),
       maxCount: 10
     };
@@ -310,7 +330,7 @@ export class ClientTester {
 
   private async shareChannel(client: TestClient, name: string): Promise<void> {
     const shareRequest: ShareRequest = {
-      channelId: client.channelResponse.channelId,
+      channelAddress: client.channelResponse.channelAddress,
       details: { name: name, sharing: true }
     };
     const args: PostArgs = {
@@ -359,7 +379,7 @@ export class ClientTester {
     return new Promise<void>((resolve, reject) => {
       const details: ChannelJoinRequest = {
         invitationId: client.shareCodeResponse.invitationId,
-        details: { name: name }
+        identity: client.identity
       };
       const args: PostArgs = {
         data: details,
@@ -435,7 +455,7 @@ export class ClientTester {
 
   private leaveChannel(client: TestClient, permanently: boolean): Promise<void> {
     const details: LeaveRequestDetails = {
-      channelId: client.channelResponse.channelId,
+      channelAddress: client.channelResponse.channelAddress,
       permanently: permanently
     };
     const requestId = client.requestIndex.toString();

@@ -1,5 +1,5 @@
 
-import { ChannelOptions } from "../common/channel-server-messages";
+import { ChannelOptions, ChannelContractDetails, ChannelMemberIdentity } from "../common/channel-server-messages";
 
 export interface UserRecord {
   id: string;
@@ -11,22 +11,21 @@ export interface UserRecord {
 }
 
 export interface ChannelRecord {
-  channelId: string;
-  creatorId: string;
+  channelAddress: string;
+  creatorUserId: string;
+  creatorAddress: string;
   transportUrl: string;
   created: number;
   lastUpdated: number;
   deleted: number;
-  options: ChannelOptions;
-  details: any;
+  contract: ChannelContractDetails;
   status: string;
 }
 
 export interface ChannelMemberRecord {
-  channelId: string;
-  participantId: string;
+  channelAddress: string;
   userId: string;
-  participantDetails: any;
+  identity: ChannelMemberIdentity;
   added: number;
   status: string;
   lastActive: number;
@@ -34,15 +33,15 @@ export interface ChannelMemberRecord {
 
 export interface ChannelInvitation {
   id: string;
-  sharedByUserId: string;
-  channelId: string;
+  sharedByAddress: string;
+  channelAddress: string;
   details?: any;
   created: number;
 }
 
 export interface MessageRecord {
-  channelId: string;
-  participantId: string;
+  channelAddress: string;
+  senderAddress: string;
   timestamp: number;
   size: number;
   contents: string;

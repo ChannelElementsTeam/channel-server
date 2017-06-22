@@ -1,3 +1,4 @@
+import * as crypto from "crypto";
 
 export class Utils {
   static sleep(duration: number): Promise<void> {

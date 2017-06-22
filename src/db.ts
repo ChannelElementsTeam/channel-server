@@ -2,7 +2,7 @@ import { Cursor, MongoClient, Db, Collection } from "mongodb";
 
 import { ChannelRecord, ChannelMemberRecord, UserRecord, ChannelInvitation, MessageRecord } from "./interfaces/db-records";
 import { configuration } from "./configuration";
-import { ChannelOptions } from "./common/channel-server-messages";
+import { ChannelOptions, ChannelContractDetails, ChannelMemberIdentity } from "./common/channel-server-messages";
 
 export class Database {
   private db: Db;
@@ -33,14 +33,14 @@ export class Database {
 
   private async initializeChannels(): Promise<void> {
     this.channels = this.db.collection('channels');
-    await this.channels.createIndex({ channelId: 1 }, { unique: true });
+    await this.channels.createIndex({ channelAddress: 1 }, { unique: true });
     await this.channels.createIndex({ lastUpdated: -1 });
   }
 
   private async initializeChannelMembers(): Promise<void> {
     this.channelMembers = this.db.collection('channelMembers');
-    await this.channelMembers.createIndex({ channelId: 1, userId: 1 }, { unique: true });
-    await this.channelMembers.createIndex({ channelId: 1, status: 1, lastActive: -1 });
+    await this.channelMembers.createIndex({ channelAddress: 1, userId: 1 }, { unique: true });
+    await this.channelMembers.createIndex({ channelAddress: 1, status: 1, lastActive: -1 });
     await this.channelMembers.createIndex({ userId: 1, status: 1, lastActive: -1 });
   }
 
@@ -51,8 +51,8 @@ export class Database {
 
   private async initializeMessages(): Promise<void> {
     this.messages = this.db.collection('messages');
-    await this.messages.createIndex({ channelId: 1, participantId: 1, timestamp: -1 }, { unique: true });
-    await this.messages.createIndex({ channelId: 1, timestamp: -1 });
+    await this.messages.createIndex({ channelAddress: 1, senderAddress: 1, timestamp: -1 }, { unique: true });
+    await this.messages.createIndex({ channelAddress: 1, timestamp: -1 });
   }
 
   async insertUser(id: string, token: string, identity: any, status: string): Promise<UserRecord> {
@@ -85,42 +85,41 @@ export class Database {
     await this.users.update({ id: id }, { $set: { identity: identity } });
   }
 
-  async insertChannel(channelId: string, creatorId: string, transportUrl: string, options: ChannelOptions, details: any, status: string): Promise<ChannelRecord> {
+  async insertChannel(channelAddress: string, creatorUserId: string, creatorAddress: string, transportUrl: string, contract: ChannelContractDetails, status: string): Promise<ChannelRecord> {
     const now = Date.now();
     const record: ChannelRecord = {
-      channelId: channelId,
-      creatorId: creatorId,
+      channelAddress: channelAddress,
+      creatorAddress: creatorAddress,
+      creatorUserId: creatorUserId,
       transportUrl: transportUrl,
       created: now,
       lastUpdated: now,
       deleted: 0,
-      options: options,
-      details: details,
+      contract: contract,
       status: status
     };
     await this.channels.insert(record);
     return record;
   }
 
-  async findChannelById(channelId: string): Promise<ChannelRecord> {
-    return await this.channels.findOne<ChannelRecord>({ channelId: channelId });
+  async findChannelById(channelAddress: string): Promise<ChannelRecord> {
+    return await this.channels.findOne<ChannelRecord>({ channelAddress: channelAddress });
   }
 
   async findUpdatedChannels(lastUpdatedSince: number): Promise<ChannelRecord[]> {
     return await this.channels.find<ChannelRecord>({ lastUpdated: { $gt: lastUpdatedSince } }).toArray();
   }
 
-  async updateChannelStatus(channelId: string, status: string): Promise<void> {
-    await this.channels.update({ channelId: channelId }, { $set: { status: status, lastUpdated: Date.now() } });
+  async updateChannelStatus(channelAddress: string, status: string): Promise<void> {
+    await this.channels.update({ channelAddress: channelAddress }, { $set: { status: status, lastUpdated: Date.now() } });
   }
 
-  async insertChannelMember(channelId: string, participantId: string, userId: string, participantDetails: any, status: string): Promise<ChannelMemberRecord> {
+  async insertChannelMember(channelAddress: string, identity: ChannelMemberIdentity, userId: string, status: string): Promise<ChannelMemberRecord> {
     const now = Date.now();
     const record: ChannelMemberRecord = {
-      channelId: channelId,
-      participantId: participantId,
+      channelAddress: channelAddress,
+      identity: identity,
       userId: userId,
-      participantDetails: participantDetails,
       added: now,
       status: status,
       lastActive: now
@@ -129,11 +128,11 @@ export class Database {
     return record;
   }
 
-  async findChannelMember(channelId: string, userId: string): Promise<ChannelMemberRecord> {
-    return await this.channelMembers.findOne<ChannelMemberRecord>({ channelId: channelId, userId: userId });
+  async findChannelMember(channelAddress: string, userId: string): Promise<ChannelMemberRecord> {
+    return await this.channelMembers.findOne<ChannelMemberRecord>({ channelAddress: channelAddress, userId: userId });
   }
 
-  async updateChannelMemberActive(channelId: string, userId: string, status: string, lastActive: number, identity?: any): Promise<void> {
+  async updateChannelMemberActive(channelAddress: string, userId: string, status: string, lastActive: number, identity?: any): Promise<void> {
     const update: any = {};
     if (status) {
       update.status = status;
@@ -144,15 +143,15 @@ export class Database {
     if (identity) {
       update.identity = identity;
     }
-    await this.channelMembers.update({ channelId: channelId, userId: userId }, { $set: update });
+    await this.channelMembers.update({ channelAddress: channelAddress, userId: userId }, { $set: update });
   }
 
-  async countChannelMembers(channelId: string, status: string): Promise<number> {
-    return await this.channelMembers.count({ channelId: channelId, status: status });
+  async countChannelMembers(channelAddress: string, status: string): Promise<number> {
+    return await this.channelMembers.count({ channelAddress: channelAddress, status: status });
   }
 
-  async findChannelMembers(channelId: string, status: string, limit = 50): Promise<ChannelMemberRecord[]> {
-    return await this.channelMembers.find<ChannelMemberRecord>({ channelId: channelId, status: status }).sort({ lastActive: -1 }).limit(limit).toArray();
+  async findChannelMembers(channelAddress: string, status: string, limit = 50): Promise<ChannelMemberRecord[]> {
+    return await this.channelMembers.find<ChannelMemberRecord>({ channelAddress: channelAddress, status: status }).sort({ lastActive: -1 }).limit(limit).toArray();
   }
 
   async countChannelMembersByUserId(userId: string, status: string, lastActiveBefore = 0): Promise<number> {
@@ -177,12 +176,12 @@ export class Database {
     return await this.channelMembers.find<ChannelMemberRecord>(query).sort({ lastActive: -1 }).limit(limit).toArray();
   }
 
-  async insertInvitation(id: string, sharedByUserId: string, channelId: string, details: any): Promise<ChannelInvitation> {
+  async insertInvitation(id: string, sharedByAddress: string, channelAddress: string, details: any): Promise<ChannelInvitation> {
     const now = Date.now();
     const record: ChannelInvitation = {
       id: id,
-      sharedByUserId: sharedByUserId,
-      channelId: channelId,
+      sharedByAddress: sharedByAddress,
+      channelAddress: channelAddress,
       details: details,
       created: now
     };
@@ -194,21 +193,21 @@ export class Database {
     return await this.invitations.findOne<ChannelInvitation>({ id: id });
   }
 
-  async insertMessage(channelId: string, participantId: string, timestamp: number, size: number, contents: Uint8Array): Promise<MessageRecord> {
+  async insertMessage(channelAddress: string, senderAddress: string, timestamp: number, size: number, contents: Uint8Array): Promise<MessageRecord> {
     const record: MessageRecord = {
-      channelId: channelId,
-      participantId: participantId,
+      channelAddress: channelAddress,
+      senderAddress: senderAddress,
       timestamp: timestamp,
       size: contents.length,
       contents: contents.join(',')
     };
-    await this.messages.update({ channelId: channelId, participantId: participantId, timestamp: timestamp }, record, { upsert: true });
+    await this.messages.update({ channelAddress: channelAddress, senderAddress: senderAddress, timestamp: timestamp }, record, { upsert: true });
     return record;
   }
 
-  findMessages(channelId: string, before: number, after: number): Cursor<MessageRecord> {
+  findMessages(channelAddress: string, before: number, after: number): Cursor<MessageRecord> {
     const query: any = {
-      channelId: channelId
+      channelAddress: channelAddress
     };
     if (before || after) {
       const range: any = {};
@@ -223,9 +222,9 @@ export class Database {
     return this.messages.find<MessageRecord>(query).sort({ timestamp: -1 });
   }
 
-  async countMessages(channelId: string, before: number, after: number): Promise<number> {
+  async countMessages(channelAddress: string, before: number, after: number): Promise<number> {
     const query: any = {
-      channelId: channelId
+      channelAddress: channelAddress
     };
     if (before || after) {
       const range: any = {};
