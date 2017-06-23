@@ -14,7 +14,7 @@ import { db } from "./db";
 import { UserRecord, ChannelMemberRecord, ChannelRecord, MessageRecord, ChannelInvitation } from './interfaces/db-records';
 import { RegistrationResponse, ChannelServerResponse, RegistrationRequest, ChannelCreateRequest, GetChannelResponse, ChannelMemberInfo, ControlChannelMessage, ChannelParticipantInfo, AccountResponse, AccountUpdateRequest, JoinRequestDetails, JoinResponseDetails, JoinNotificationDetails, ErrorDetails, ShareRequest, ShareResponse, LeaveNotificationDetails, HistoryRequestDetails, HistoryResponseDetails, ControlMessagePayload, ProviderServiceList, ChannelListResponse, LeaveRequestDetails, ChannelOptions, HistoryMessageDetails } from './common/channel-server-messages';
 import { Utils } from "./utils";
-import { DeserializedMessage, ChannelMessageUtils, PingRequestDetails, ChannelDeleteResponseDetails, ChannelDeletedNotificationDetails, ShareCodeResponse, ChannelJoinRequest, ChannelMessage, ChannelContractDetails, ChannelMemberIdentity, ChannelParticipantIdentity } from "./common/channel-server-messages";
+import { DeserializedMessage, ChannelMessageUtils, PingRequestDetails, ChannelDeleteResponseDetails, ChannelDeletedNotificationDetails, ShareCodeResponse, ChannelAcceptRequest, ChannelMessage, ChannelMemberIdentity, ChannelParticipantIdentity, ChannelContractDetails } from "./common/channel-server-messages";
 
 const TOKEN_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const MAX_HISTORY_BUFFERED_SIZE = 50000;
@@ -269,7 +269,7 @@ export class ChannelServer implements TransportEventHandler {
       console.warn("ChannelServer: handleAccept not authenticated");
       return;
     }
-    const details = request.body as ChannelJoinRequest;
+    const details = request.body as ChannelAcceptRequest;
     if (!details || !details.invitationId) {
       response.status(400).send("Request is invalid -- missing invitationId");
       return;
@@ -284,7 +284,7 @@ export class ChannelServer implements TransportEventHandler {
       response.status(404).send("The shared channel no longer exists");
       return;
     }
-    await db.insertChannelMember(channelRecord.channelAddress, details.identity, user.id, 'active');
+    await db.insertChannelMember(channelRecord.channelAddress, details.identity, details.memberServicesContract, user.id, 'active');
     await this.handleGetChannelResponse(channelRecord, user, request, response);
     console.log("ChannelServer: invitation used and channel joined", user.id, invitation.id, invitation.channelAddress);
   }
@@ -302,8 +302,8 @@ export class ChannelServer implements TransportEventHandler {
     // servers, this means that I'm balancing the switching load over those servers, too.  We just have to make sure
     // that REST requests that need to be handled by the server doing the transport arrive on the correct server.
     const channelAddress = channelRequest.channelAddress;
-    this.fillAllOptions(channelRequest.contract.channelContract.options);
-    const channelRecord = await db.insertChannel(channelAddress, user.id, channelRequest.creatorIdentity.address, this.transportUrl, channelRequest.contract, 'active');
+    this.fillAllOptions(channelRequest.channelContract.serviceContract.options);
+    const channelRecord = await db.insertChannel(channelAddress, user.id, channelRequest.creatorIdentity.address, this.transportUrl, channelRequest.channelContract, 'active');
     const now = Date.now();
     const channelInfo: ChannelInfo = {
       code: this.allocateChannelCode(),
@@ -316,7 +316,7 @@ export class ChannelServer implements TransportEventHandler {
     this.channelInfoByAddress[channelRecord.channelAddress] = channelInfo;
     this.channelAddressByCode[channelInfo.code] = channelRecord.channelAddress;
     const participantAddress = this.createId();
-    await db.insertChannelMember(channelAddress, channelRequest.creatorIdentity, user.id, 'active');
+    await db.insertChannelMember(channelAddress, channelRequest.creatorIdentity, channelRequest.memberServicesContract, user.id, 'active');
     const reply = await this.handleGetChannelResponse(channelRecord, user, request, response);
     console.log("ChannelServer: channel created", user.id, channelAddress);
   }
@@ -526,7 +526,7 @@ export class ChannelServer implements TransportEventHandler {
   private async handleParticipantLeft(channel: ChannelInfo, participant: ParticipantInfo, socket: SocketInfo, permanently: boolean): Promise<number> {
     delete channel.participantsByCode[participant.code];
     let count = 0;
-    if (channel.contract.channelContract.options.topology === 'many-to-many') {
+    if (channel.contract.serviceContract.options.topology === 'many-to-many') {
       for (const code of Object.keys(channel.participantsByCode)) {
         if (code !== participant.code.toString()) {
           const p = channel.participantsByCode[code];
@@ -585,11 +585,11 @@ export class ChannelServer implements TransportEventHandler {
       result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 403, "You have not been assigned this sender code on that channel on this socket", channelAddress));
       return result;  // sending with illegal sender code
     }
-    if (channelInfo.contract.channelContract.options.topology === 'one-to-many' && participant.memberIdentity.address !== channelInfo.creatorAddress) {
+    if (channelInfo.contract.serviceContract.options.topology === 'one-to-many' && participant.memberIdentity.address !== channelInfo.creatorAddress) {
       result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 403, "This is a one-to-many channel.  Only the creator is allowed to send messages.", channelAddress));
       return result;
     }
-    if (messageInfo.history && channelInfo.contract.channelContract.options.history) {
+    if (messageInfo.history && channelInfo.contract.serviceContract.options.history) {
       await db.insertMessage(channelAddress, participant.memberIdentity.address, messageInfo.timestamp, messageInfo.serializedMessage.byteLength, messageInfo.serializedMessage);
     }
     await this.updateChannelMemberActive(channelAddress, participant.code.toString());
@@ -597,7 +597,7 @@ export class ChannelServer implements TransportEventHandler {
     for (const code of Object.keys(channelInfo.participantsByCode)) {
       if (code !== messageInfo.senderCode.toString()) {
         const p = channelInfo.participantsByCode[code];
-        if (channelInfo.contract.channelContract.options.topology === 'many-to-one' && p.memberIdentity.address !== channelInfo.creatorAddress && participant.memberIdentity.address !== channelInfo.creatorAddress) {
+        if (channelInfo.contract.serviceContract.options.topology === 'many-to-one' && p.memberIdentity.address !== channelInfo.creatorAddress && participant.memberIdentity.address !== channelInfo.creatorAddress) {
           continue;
         }
         if (p.socketId !== socketId && result.forwardMessageToSockets.indexOf(p.socketId) < 0) {
@@ -713,7 +713,7 @@ export class ChannelServer implements TransportEventHandler {
       type: 'join-reply',
       details: joinResponseDetails
     };
-    if (channelInfo.contract.channelContract.options.topology === 'many-to-many') {
+    if (channelInfo.contract.serviceContract.options.topology === 'many-to-many') {
       for (const code of Object.keys(channelInfo.participantsByCode)) {
         const p = channelInfo.participantsByCode[code];
         const info: ChannelParticipantInfo = {
@@ -735,7 +735,7 @@ export class ChannelServer implements TransportEventHandler {
 
     let notificationCount = 0;
     // Now we also need to tell all of the other participants about the new participant, if many-to-many
-    if (channelInfo.contract.channelContract.options.topology === 'many-to-many') {
+    if (channelInfo.contract.serviceContract.options.topology === 'many-to-many') {
       for (const code of Object.keys(channelInfo.participantsByCode)) {
         const p = channelInfo.participantsByCode[code];
         if (p.socketId !== socket.socketId) {

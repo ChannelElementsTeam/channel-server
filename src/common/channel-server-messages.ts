@@ -68,12 +68,13 @@ export interface ShareCodeResponse {
   details: any;
 }
 
-export interface ChannelJoinRequest {
+export interface ChannelAcceptRequest {
   invitationId: string;
   identity: ChannelMemberIdentity;
+  memberServicesContract: MemberServicesContractDetails; // between me and service provider only
 }
 
-export interface ChannelContractInfo {
+export interface ServiceContractInfo {
   options: ChannelOptions;
   details: any;
 }
@@ -82,19 +83,32 @@ export interface ParticipationContract {
   details?: any;
 }
 export interface ChannelContractDetails {
-  channelContract: ChannelContractInfo;
+  package: string;
+  serviceContract: ServiceContractInfo;
   participationContract: ParticipationContract;
 }
 
 export interface ChannelMemberIdentity {
   address: string;
+  publicKey: string;
   details: any;
+}
+
+export interface MemberServicesContractSmsDetails {
+  smsNumber: string;  // E.164 format, e.g., +16505551212
+}
+
+export interface MemberServicesContractDetails {
+  notificationType: string; // none, sms, web-push
+  details?: MemberServicesContractSmsDetails; // | others depending on type
 }
 
 export interface ChannelCreateRequest {
   channelAddress: string;
   creatorIdentity: ChannelMemberIdentity;
-  contract: ChannelContractDetails;
+  jwsSignature: any;  // see https://www.npmjs.com/package/node-jose#signing-content
+  channelContract: ChannelContractDetails; // shared with everyone
+  memberServicesContract: MemberServicesContractDetails; // between me and service provider only
 }
 
 export interface ChannelMemberInfo {

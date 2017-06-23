@@ -2,7 +2,7 @@ import { Cursor, MongoClient, Db, Collection } from "mongodb";
 
 import { ChannelRecord, ChannelMemberRecord, UserRecord, ChannelInvitation, MessageRecord } from "./interfaces/db-records";
 import { configuration } from "./configuration";
-import { ChannelOptions, ChannelContractDetails, ChannelMemberIdentity } from "./common/channel-server-messages";
+import { ChannelOptions, ChannelContractDetails, ChannelMemberIdentity, MemberServicesContractDetails } from "./common/channel-server-messages";
 
 export class Database {
   private db: Db;
@@ -113,11 +113,12 @@ export class Database {
     await this.channels.update({ channelAddress: channelAddress }, { $set: { status: status, lastUpdated: Date.now() } });
   }
 
-  async insertChannelMember(channelAddress: string, identity: ChannelMemberIdentity, userId: string, status: string): Promise<ChannelMemberRecord> {
+  async insertChannelMember(channelAddress: string, identity: ChannelMemberIdentity, memberServicesContract: MemberServicesContractDetails, userId: string, status: string): Promise<ChannelMemberRecord> {
     const now = Date.now();
     const record: ChannelMemberRecord = {
       channelAddress: channelAddress,
       identity: identity,
+      memberServices: memberServicesContract,
       userId: userId,
       added: now,
       status: status,

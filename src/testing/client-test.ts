@@ -4,7 +4,7 @@ import { configuration } from '../configuration';
 import { RegistrationRequest, RegistrationResponse, ChannelCreateRequest, ControlChannelMessage, JoinRequestDetails, ShareResponse, GetChannelResponse, JoinResponseDetails, ShareRequest, HistoryRequestDetails, HistoryResponseDetails, ChannelListResponse, LeaveRequestDetails } from '../common/channel-server-messages';
 import { client as WebSocketClient, connection, IMessage } from 'websocket';
 import { TextDecoder, TextEncoder } from 'text-encoding';
-import { ChannelMessageUtils, ShareCodeResponse, ChannelJoinRequest, DeserializedMessage, ChannelMessage, MessageToSerialize, ChannelMemberIdentity, ChannelContractDetails } from "../common/channel-server-messages";
+import { ChannelMessageUtils, ShareCodeResponse, DeserializedMessage, ChannelMessage, MessageToSerialize, ChannelMemberIdentity, ChannelContractDetails, ChannelAcceptRequest } from "../common/channel-server-messages";
 import * as url from "url";
 import { EntityAddress } from "../common/entity-address";
 const RestClient = require('node-rest-client').Client;
@@ -41,6 +41,7 @@ class TestClient {
   constructor() {
     this.identity = {
       address: EntityAddress.generate().toString(),
+      publicKey: null,
       details: {}
     };
   }
@@ -215,7 +216,8 @@ export class ClientTester {
 
   private async createChannel(client: TestClient, name: string): Promise<void> {
     const contract: ChannelContractDetails = {
-      channelContract: {
+      package: null,
+      serviceContract: {
         options: {
           history: true,
           topology: 'many-to-many'
@@ -230,7 +232,9 @@ export class ClientTester {
     const createRequest: ChannelCreateRequest = {
       channelAddress: EntityAddress.generate().toString(),
       creatorIdentity: client.identity,
-      contract: contract
+      jwsSignature: null,
+      channelContract: contract,
+      memberServicesContract: null
     };
     const args: PostArgs = {
       data: createRequest,
@@ -377,9 +381,10 @@ export class ClientTester {
 
   private async accept(client: TestClient, name: string): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      const details: ChannelJoinRequest = {
+      const details: ChannelAcceptRequest = {
         invitationId: client.shareCodeResponse.invitationId,
-        identity: client.identity
+        identity: client.identity,
+        memberServicesContract: null
       };
       const args: PostArgs = {
         data: details,
