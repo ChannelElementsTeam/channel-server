@@ -70,7 +70,7 @@ export interface ShareCodeResponse {
 
 export interface ChannelAcceptRequest {
   invitationId: string;
-  identity: ChannelMemberIdentity;
+  identity: SignedChannelMemberIdentity;
   memberServicesContract: MemberServicesContractDetails; // between me and service provider only
 }
 
@@ -91,11 +91,21 @@ export interface ChannelContractDetails {
 export interface ChannelMemberIdentity {
   address: string;
   publicKey: string;
-  details: any;
+  signedAt: number;
+  name?: string;
+  imageUrl?: string;
+  contactMeShareCode?: string;
+  details?: any;
+}
+
+export interface SignedChannelMemberIdentity {
+  identity: ChannelMemberIdentity;
+  signature: string;
 }
 
 export interface MemberServicesContractSmsDetails {
   smsNumber: string;  // E.164 format, e.g., +16505551212
+  reference: string; // something to be appeneded to message -- typically client URL
 }
 
 export interface MemberServicesContractDetails {
@@ -105,14 +115,14 @@ export interface MemberServicesContractDetails {
 
 export interface ChannelCreateRequest {
   channelAddress: string;
-  creatorIdentity: ChannelMemberIdentity;
+  creatorIdentity: SignedChannelMemberIdentity;
   jwsSignature: any;  // see https://www.npmjs.com/package/node-jose#signing-content
   channelContract: ChannelContractDetails; // shared with everyone
   memberServicesContract: MemberServicesContractDetails; // between me and service provider only
 }
 
 export interface ChannelMemberInfo {
-  identity: ChannelMemberIdentity;
+  identity: SignedChannelMemberIdentity;
   isCreator: boolean;
   memberSince: number;
   lastActive: number;
@@ -141,7 +151,7 @@ export interface ChannelListResponse {
 }
 
 export interface ChannelParticipantIdentity {
-  memberIdentity: ChannelMemberIdentity;
+  memberIdentity: SignedChannelMemberIdentity;
   participantDetails: any;
 }
 
@@ -219,7 +229,7 @@ export interface RateLimitDetails {
 
 export interface JoinNotificationDetails {
   channelAddress: string;
-  memberIdentity: ChannelMemberIdentity;
+  memberIdentity: SignedChannelMemberIdentity;
 
   participantCode: number;
   participantDetails: any;

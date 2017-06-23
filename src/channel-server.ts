@@ -14,7 +14,7 @@ import { db } from "./db";
 import { UserRecord, ChannelMemberRecord, ChannelRecord, MessageRecord, ChannelInvitation } from './interfaces/db-records';
 import { RegistrationResponse, ChannelServerResponse, RegistrationRequest, ChannelCreateRequest, GetChannelResponse, ChannelMemberInfo, ControlChannelMessage, ChannelParticipantInfo, AccountResponse, AccountUpdateRequest, JoinRequestDetails, JoinResponseDetails, JoinNotificationDetails, ErrorDetails, ShareRequest, ShareResponse, LeaveNotificationDetails, HistoryRequestDetails, HistoryResponseDetails, ControlMessagePayload, ProviderServiceList, ChannelListResponse, LeaveRequestDetails, ChannelOptions, HistoryMessageDetails } from './common/channel-server-messages';
 import { Utils } from "./utils";
-import { DeserializedMessage, ChannelMessageUtils, PingRequestDetails, ChannelDeleteResponseDetails, ChannelDeletedNotificationDetails, ShareCodeResponse, ChannelAcceptRequest, ChannelMessage, ChannelMemberIdentity, ChannelParticipantIdentity, ChannelContractDetails } from "./common/channel-server-messages";
+import { DeserializedMessage, ChannelMessageUtils, PingRequestDetails, ChannelDeleteResponseDetails, ChannelDeletedNotificationDetails, ShareCodeResponse, ChannelAcceptRequest, ChannelMessage, SignedChannelMemberIdentity, ChannelParticipantIdentity, ChannelContractDetails } from "./common/channel-server-messages";
 
 const TOKEN_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const MAX_HISTORY_BUFFERED_SIZE = 50000;
@@ -303,7 +303,7 @@ export class ChannelServer implements TransportEventHandler {
     // that REST requests that need to be handled by the server doing the transport arrive on the correct server.
     const channelAddress = channelRequest.channelAddress;
     this.fillAllOptions(channelRequest.channelContract.serviceContract.options);
-    const channelRecord = await db.insertChannel(channelAddress, user.id, channelRequest.creatorIdentity.address, this.transportUrl, channelRequest.channelContract, 'active');
+    const channelRecord = await db.insertChannel(channelAddress, user.id, channelRequest.creatorIdentity.identity.address, this.transportUrl, channelRequest.channelContract, 'active');
     const now = Date.now();
     const channelInfo: ChannelInfo = {
       code: this.allocateChannelCode(),
@@ -311,7 +311,7 @@ export class ChannelServer implements TransportEventHandler {
       participantsByCode: {},
       lastAllocatedCode: 0,
       contract: channelRecord.contract,
-      creatorAddress: channelRequest.creatorIdentity.address
+      creatorAddress: channelRequest.creatorIdentity.identity.address
     };
     this.channelInfoByAddress[channelRecord.channelAddress] = channelInfo;
     this.channelAddressByCode[channelInfo.code] = channelRecord.channelAddress;
@@ -532,7 +532,7 @@ export class ChannelServer implements TransportEventHandler {
           const p = channel.participantsByCode[code];
           const notificationDetails: LeaveNotificationDetails = {
             channelAddress: channel.channelAddress,
-            participantAddress: participant.memberIdentity.address,
+            participantAddress: participant.memberIdentity.identity.address,
             participantCode: participant.code,
             permanently: permanently
           };
@@ -585,19 +585,19 @@ export class ChannelServer implements TransportEventHandler {
       result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 403, "You have not been assigned this sender code on that channel on this socket", channelAddress));
       return result;  // sending with illegal sender code
     }
-    if (channelInfo.contract.serviceContract.options.topology === 'one-to-many' && participant.memberIdentity.address !== channelInfo.creatorAddress) {
+    if (channelInfo.contract.serviceContract.options.topology === 'one-to-many' && participant.memberIdentity.identity.address !== channelInfo.creatorAddress) {
       result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 403, "This is a one-to-many channel.  Only the creator is allowed to send messages.", channelAddress));
       return result;
     }
     if (messageInfo.history && channelInfo.contract.serviceContract.options.history) {
-      await db.insertMessage(channelAddress, participant.memberIdentity.address, messageInfo.timestamp, messageInfo.serializedMessage.byteLength, messageInfo.serializedMessage);
+      await db.insertMessage(channelAddress, participant.memberIdentity.identity.address, messageInfo.timestamp, messageInfo.serializedMessage.byteLength, messageInfo.serializedMessage);
     }
     await this.updateChannelMemberActive(channelAddress, participant.code.toString());
     const socketIds: string[] = [];
     for (const code of Object.keys(channelInfo.participantsByCode)) {
       if (code !== messageInfo.senderCode.toString()) {
         const p = channelInfo.participantsByCode[code];
-        if (channelInfo.contract.serviceContract.options.topology === 'many-to-one' && p.memberIdentity.address !== channelInfo.creatorAddress && participant.memberIdentity.address !== channelInfo.creatorAddress) {
+        if (channelInfo.contract.serviceContract.options.topology === 'many-to-one' && p.memberIdentity.identity.address !== channelInfo.creatorAddress && participant.memberIdentity.identity.address !== channelInfo.creatorAddress) {
           continue;
         }
         if (p.socketId !== socketId && result.forwardMessageToSockets.indexOf(p.socketId) < 0) {
@@ -704,7 +704,7 @@ export class ChannelServer implements TransportEventHandler {
     const joinResponseDetails: JoinResponseDetails = {
       channelAddress: channelRecord.channelAddress,
       channelCode: channelInfo.code,
-      participantAddress: participant.memberIdentity.address,
+      participantAddress: participant.memberIdentity.identity.address,
       participantCode: participant.code,
       participants: []
     };
@@ -720,7 +720,7 @@ export class ChannelServer implements TransportEventHandler {
           code: p.code,
           participantIdentity: { memberIdentity: memberIdentity, participantDetails: requestDetails.participantIdentityDetails },
           isCreator: p.userId === channelRecord.creatorUserId,
-          isYou: p.memberIdentity.address === participant.memberIdentity.address,
+          isYou: p.memberIdentity.identity.address === participant.memberIdentity.identity.address,
           memberSince: p.memberSince,
           lastActive: p.lastActive
         };
@@ -758,7 +758,7 @@ export class ChannelServer implements TransportEventHandler {
         }
       }
     }
-    console.log("ChannelServer: Completed join and notified " + notificationCount, socket.userId, socket.socketId, controlRequest.requestId, channelInfo.channelAddress, channelInfo.code, participant.memberIdentity.address, participant.code);
+    console.log("ChannelServer: Completed join and notified " + notificationCount, socket.userId, socket.socketId, controlRequest.requestId, channelInfo.channelAddress, channelInfo.code, participant.memberIdentity.identity.address, participant.code);
     return result;
   }
 
@@ -806,7 +806,7 @@ export class ChannelServer implements TransportEventHandler {
       socketId: socket.socketId
     };
     result.deliverControlMessages.push(leaveResponseDirective);
-    console.log("ChannelServer: Completed leave and notified " + notificationCount, socket.userId, socket.socketId, controlRequest.requestId, channelInfo.channelAddress, channelInfo.code, participant.memberIdentity.address, participant.code);
+    console.log("ChannelServer: Completed leave and notified " + notificationCount, socket.userId, socket.socketId, controlRequest.requestId, channelInfo.channelAddress, channelInfo.code, participant.memberIdentity.identity.address, participant.code);
     return result;
   }
 
@@ -817,7 +817,7 @@ export class ChannelServer implements TransportEventHandler {
       const participant = channelInfo.participantsByCode[code];
       if (participant) {
         participant.lastActive = now;
-        await db.updateChannelMemberActive(channelAddress, participant.memberIdentity.address, 'active', now);
+        await db.updateChannelMemberActive(channelAddress, participant.memberIdentity.identity.address, 'active', now);
       }
     }
   }
@@ -859,7 +859,7 @@ export class ChannelServer implements TransportEventHandler {
     };
     result.deliverControlMessages.push(directive);
     void this.processHistoryRequestAsync(channelRecord, socket, requestDetails, responseDetails.count);
-    await this.updateChannelMemberActive(channelRecord.channelAddress, channelMemberRecord.identity.address);
+    await this.updateChannelMemberActive(channelRecord.channelAddress, channelMemberRecord.identity.identity.address);
     return result;
   }
 
@@ -1025,7 +1025,7 @@ export class ChannelServer implements TransportEventHandler {
 }
 
 interface ParticipantInfo {
-  memberIdentity: ChannelMemberIdentity;
+  memberIdentity: SignedChannelMemberIdentity;
   participantIdentityDetails: any;
   code: number;
   channelAddress: string;

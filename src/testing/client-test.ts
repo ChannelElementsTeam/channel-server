@@ -4,7 +4,7 @@ import { configuration } from '../configuration';
 import { RegistrationRequest, RegistrationResponse, ChannelCreateRequest, ControlChannelMessage, JoinRequestDetails, ShareResponse, GetChannelResponse, JoinResponseDetails, ShareRequest, HistoryRequestDetails, HistoryResponseDetails, ChannelListResponse, LeaveRequestDetails } from '../common/channel-server-messages';
 import { client as WebSocketClient, connection, IMessage } from 'websocket';
 import { TextDecoder, TextEncoder } from 'text-encoding';
-import { ChannelMessageUtils, ShareCodeResponse, DeserializedMessage, ChannelMessage, MessageToSerialize, ChannelMemberIdentity, ChannelContractDetails, ChannelAcceptRequest } from "../common/channel-server-messages";
+import { ChannelMessageUtils, ShareCodeResponse, DeserializedMessage, ChannelMessage, MessageToSerialize, SignedChannelMemberIdentity, ChannelContractDetails, ChannelAcceptRequest, ChannelMemberIdentity } from "../common/channel-server-messages";
 import * as url from "url";
 import { EntityAddress } from "../common/entity-address";
 const RestClient = require('node-rest-client').Client;
@@ -27,7 +27,7 @@ interface IRestClient {
 
 class TestClient {
   id: string;
-  identity: ChannelMemberIdentity;
+  signedIdentity: SignedChannelMemberIdentity;
   registrationResponse?: RegistrationResponse;
   socket?: WebSocketClient;
   conn?: connection;
@@ -39,10 +39,16 @@ class TestClient {
   joinResponseDetails?: JoinResponseDetails;
 
   constructor() {
-    this.identity = {
+
+    const identity: ChannelMemberIdentity = {
       address: EntityAddress.generate().toString(),
       publicKey: null,
+      signedAt: Date.now(),
       details: {}
+    };
+    this.signedIdentity = {
+      identity: identity,
+      signature: null
     };
   }
   private requestHandlersById: { [requestId: string]: (controlMessage: ControlChannelMessage) => Promise<void> } = {};
@@ -231,7 +237,7 @@ export class ClientTester {
     };
     const createRequest: ChannelCreateRequest = {
       channelAddress: EntityAddress.generate().toString(),
-      creatorIdentity: client.identity,
+      creatorIdentity: client.signedIdentity,
       jwsSignature: null,
       channelContract: contract,
       memberServicesContract: null
@@ -293,7 +299,7 @@ export class ClientTester {
   private async joinChannel(client: TestClient, name: string): Promise<void> {
     const details: JoinRequestDetails = {
       channelAddress: client.channelResponse.channelAddress,
-      memberAddress: client.identity.address,
+      memberAddress: client.signedIdentity.identity.address,
       participantIdentityDetails: { name: name }
     };
     const requestId = client.requestIndex.toString();
@@ -383,7 +389,7 @@ export class ClientTester {
     return new Promise<void>((resolve, reject) => {
       const details: ChannelAcceptRequest = {
         invitationId: client.shareCodeResponse.invitationId,
-        identity: client.identity,
+        identity: client.signedIdentity,
         memberServicesContract: null
       };
       const args: PostArgs = {
@@ -461,7 +467,7 @@ export class ClientTester {
   private leaveChannel(client: TestClient, permanently: boolean): Promise<void> {
     const details: LeaveRequestDetails = {
       channelAddress: client.channelResponse.channelAddress,
-      memberAddress: client.identity.address,
+      memberAddress: client.signedIdentity.identity.address,
       permanently: permanently
     };
     const requestId = client.requestIndex.toString();

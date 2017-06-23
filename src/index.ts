@@ -17,6 +17,10 @@ import { ChannelServer } from './channel-server';
 import { clientTester } from './testing/client-test';
 import { ChannelServerResponse } from "./common/channel-server-messages";
 
+const jws = require('jws');
+import * as NodeRSA from 'node-rsa';
+import { TextDecoder, TextEncoder } from 'text-encoding';
+
 const VERSION = 1;
 const DYNAMIC_BASE = '/d';
 
@@ -27,7 +31,23 @@ class ChannelElementsServer {
   private started: number;
   private channelServer: ChannelServer;
 
+  async sign(): Promise<void> {
+    // https://kobl.one/blog/create-full-ethereum-keypair-and-address/
+    const key = new NodeRSA({ b: 256 });
+    const keyPair = key.generateKeyPair();
+    const signature = jws.sign({
+      header: { alg: 'RS256' },
+      payload: 'asdfkljfsd',
+      privateKey: key.exportKey('private')
+    });
+    const result = jws.verify(signature, 'RS256', key.exportKey('public'));
+    // Address generation:  see https://ethereum.stackexchange.com/questions/15525/how-to-generate-an-ethereum-address-using-web3-js-using-a-string-of-text-or-brai
+    // console.log(result, key.exportKey('public'), signature.length);
+  }
   async start(): Promise<void> {
+
+    await this.sign();
+
     this.setupExceptionHandling();
     await this.setupConfiguration();
     await db.initialize();
