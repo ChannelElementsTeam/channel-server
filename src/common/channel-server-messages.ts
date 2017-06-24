@@ -90,6 +90,7 @@ export interface ChannelContractDetails {
 
 export interface ChannelMemberIdentity {
   address: string;
+  account: string;
   publicKey: string;
   signedAt: number;
   name?: string;

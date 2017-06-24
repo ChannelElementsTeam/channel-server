@@ -7,6 +7,7 @@ import { TextDecoder, TextEncoder } from 'text-encoding';
 import { ChannelMessageUtils, ShareCodeResponse, DeserializedMessage, ChannelMessage, MessageToSerialize, SignedChannelMemberIdentity, ChannelContractDetails, ChannelAcceptRequest, ChannelMemberIdentity } from "../common/channel-server-messages";
 import * as url from "url";
 import { EntityAddress } from "../common/entity-address";
+import { ChannelIdentityUtils } from "../common/channel-identity";
 const RestClient = require('node-rest-client').Client;
 const basic = require('basic-authorization-header');
 
@@ -37,19 +38,11 @@ class TestClient {
   shareResponse?: ShareResponse;
   shareCodeResponse?: ShareCodeResponse;
   joinResponseDetails?: JoinResponseDetails;
+  privateKey: Uint8Array;
 
-  constructor() {
-
-    const identity: ChannelMemberIdentity = {
-      address: EntityAddress.generate().toString(),
-      publicKey: null,
-      signedAt: Date.now(),
-      details: {}
-    };
-    this.signedIdentity = {
-      identity: identity,
-      signature: null
-    };
+  constructor(name: string) {
+    this.privateKey = ChannelIdentityUtils.generatePrivateKey();
+    this.signedIdentity = ChannelIdentityUtils.createSignedChannelMemberIdentity(ChannelIdentityUtils.getKeyInfo(this.privateKey), name);
   }
   private requestHandlersById: { [requestId: string]: (controlMessage: ControlChannelMessage) => Promise<void> } = {};
   async handleMessage(messageInfo: ChannelMessage): Promise<void> {
@@ -115,7 +108,7 @@ export class ClientTester {
       response.status(400).send("Missing id param");
       return;
     }
-    const client = new TestClient();
+    const client = new TestClient(name);
     this.clientsById[id] = client;
     await this.register(client, name, url.resolve(configuration.get('baseClientUri'), '/d/register'));
     await this.createChannel(client, name);
@@ -139,7 +132,7 @@ export class ClientTester {
       response.status(400).send("Missing from param");
       return;
     }
-    const client = new TestClient();
+    const client = new TestClient(name);
     this.clientsById[id] = client;
     await this.getShare(client, from);
     await this.register(client, name, (client.shareCodeResponse).registrationUrl);

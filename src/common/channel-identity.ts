@@ -1,34 +1,49 @@
-import * as forge from 'node-forge';
-const jws = require('jws');
 import { SignedChannelMemberIdentity, ChannelMemberIdentity } from "./channel-server-messages";
-const ethereumUtils = require('ethereumjs-utils');
+import { TextDecoder, TextEncoder } from 'text-encoding';
+import * as crypto from 'crypto';
+const secp256k1 = require('secp256k1');
+const ethereumUtils = require('ethereumjs-util');
+const KeyEncoder = require('key-encoder');
+const jws = require('jws');
 
-export interface KeyPair {
-  privateKey: string;
-  publicKey: string;
-  fingerprint: string;
+export interface KeyInfo {
+  privateKeyBytes: Uint8Array;
+  privateKeyPem: string;
+  publicKeyBytes: Uint8Array;
+  publicKeyPem: string;
+  ethereumAddress: string;
+  address: string;
 }
 export class ChannelIdentityUtils {
-  static async generateKeyPair(): Promise<KeyPair> {
-    return new Promise<KeyPair>((resolve, reject) => {
-      forge.pki.rsa.generateKeyPair({ bits: 1024, workers: -1 }, (err: Error, keyPair: forge.pki.KeyPair) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve({
-            privateKey: forge.pki.privateKeyToPem(keyPair.privateKey),
-            publicKey: forge.pki.publicKeyToPem(keyPair.publicKey),
-            fingerprint: forge.pki.
-          });
-        }
-      });
-    });
+
+  static generatePrivateKey(): Uint8Array {
+    let privateKeyBuffer: Buffer;
+    do {
+      privateKeyBuffer = crypto.randomBytes(32);
+    } while (!secp256k1.privateKeyVerify(privateKeyBuffer));
+    return new Uint8Array(privateKeyBuffer);
+  }
+  static getKeyInfo(privateKey: Uint8Array): KeyInfo {
+    const publicKey = secp256k1.publicKeyCreate(new Buffer(privateKey)) as Uint8Array;
+    const ethPublic = ethereumUtils.importPublic(new Buffer(publicKey)) as Uint8Array;
+    const ethAddress = ethereumUtils.pubToAddress(ethPublic, false) as Uint8Array;
+    const keyEncoder = new KeyEncoder('secp256k1');
+    const result: KeyInfo = {
+      privateKeyBytes: privateKey,
+      privateKeyPem: keyEncoder.encodePrivate(new Buffer(privateKey).toString('hex'), 'raw', 'pem'),
+      publicKeyBytes: publicKey,
+      publicKeyPem: keyEncoder.encodePublic(new Buffer(publicKey).toString('hex'), 'raw', 'pem'),
+      ethereumAddress: '0x' + new Buffer(ethAddress).toString('hex'),
+      address: new Buffer(ethAddress).toString('base64')
+    };
+    return result;
   }
 
-  static createSignedChannelMemberIdentity(keyPair: KeyPair, name?: string, imageUrl?: string, contactMeShareCode?: string, details?: any): SignedChannelMemberIdentity {
+  static createSignedChannelMemberIdentity(keyInfo: KeyInfo, name?: string, imageUrl?: string, contactMeShareCode?: string, details?: any): SignedChannelMemberIdentity {
     const identity: ChannelMemberIdentity = {
-      address: this.computeAddressFromPrivateKey(keyPair.privateKeyBytes),
-      publicKey: keyPair.publicKey,
+      address: keyInfo.address,
+      account: keyInfo.ethereumAddress,
+      publicKey: keyInfo.publicKeyPem,
       signedAt: Date.now(),
     };
     if (name) {
@@ -45,25 +60,44 @@ export class ChannelIdentityUtils {
     }
     const result: SignedChannelMemberIdentity = {
       identity: identity,
-      signature: this.computeSignature(identity, keyPair.privateKey)
+      signature: this.sign(keyInfo, identity)
     };
     return result;
   }
 
-  static computeAddressFromPrivateKey(privateKeyBytes: Uint8Array): string {
-
+  private static sign(keyInfo: KeyInfo, object: any): any {
+    const hash = this.hash(object);
+    const jwsSignature = jws.sign({
+      header: { alg: 'RS256' },
+      payload: object,
+      privateKey: keyInfo.privateKeyPem
+    });
+    const verification = this.verify(hash, jwsSignature, keyInfo.publicKeyPem);
+    if (!verification) {
+      throw new Error("Sign/Verify is not working");
+    }
+    return jwsSignature;
   }
 
-  static computeAddressFromPublicKey(publicKeyBytes: Uint8Array): string {
-
+  static verifySignedChannelMemberIdentity(info: SignedChannelMemberIdentity, expectedSignTime: number): boolean {
+    const hash = this.hash(info.identity);
+    return this.verify(hash, info.signature, info.identity.publicKey);
   }
 
-  static computeSignature(object: any, privateKeyPem: string): string {
-
+  private static verify(hash: string, signature: any, publicKeyPem: string): boolean {
+    const hashBuffer = Buffer.from(hash, 'base64');
+    try {
+      return jws.verify(signature, 'RS256', publicKeyPem);
+    } catch (err) {
+      console.warn("ChannelIdentity.verify failure", err);
+      return false;
+    }
   }
 
-  static verifySignature(object: any, publicKeyPem: string): boolean {
-
+  private static hash(object: any): string {
+    const hash = crypto.createHash('sha256');
+    hash.update(JSON.stringify(object));
+    return hash.digest('base64');
   }
 
 }

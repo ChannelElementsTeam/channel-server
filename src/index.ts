@@ -16,10 +16,7 @@ import { ChannelServer } from './channel-server';
 
 import { clientTester } from './testing/client-test';
 import { ChannelServerResponse } from "./common/channel-server-messages";
-
-const jws = require('jws');
-import * as NodeRSA from 'node-rsa';
-import { TextDecoder, TextEncoder } from 'text-encoding';
+import { ChannelIdentityUtils } from "./common/channel-identity";
 
 const VERSION = 1;
 const DYNAMIC_BASE = '/d';
@@ -32,18 +29,62 @@ class ChannelElementsServer {
   private channelServer: ChannelServer;
 
   async sign(): Promise<void> {
+    const privateKey = ChannelIdentityUtils.generatePrivateKey();
+    const keyInfo = ChannelIdentityUtils.getKeyInfo(privateKey);
+    const signedIdentity = ChannelIdentityUtils.createSignedChannelMemberIdentity(keyInfo, "Bob", "https://google.com/myphoto.png", 'https://channelelements.com/d/share/7y8EF4s', { hair: "brown" });
+    console.log("Signed Identity", signedIdentity);
+    const valid = ChannelIdentityUtils.verifySignedChannelMemberIdentity(signedIdentity, 0);
+    console.log("Verified", valid);
+
+    // let privateKey: Buffer;
+    // do {
+    //     privateKey = crypto.randomBytes(32);
+    // } while (!secp256k1.privateKeyVerify(privateKey));
+    // const publicKey = secp256k1.publicKeyCreate(privateKey);
+    // const ethPublic = ethereumUtils.importPublic(new Buffer(publicKey));
+    // const ethAddress = ethereumUtils.pubToAddress(ethPublic, false);
+
+    // const keyEncoder = new KeyEncoder('secp256k1');
+    // const privatePem = keyEncoder.encodePrivate(new Buffer(privateKey).toString('hex'), 'raw', 'pem');
+    // const publicPem = keyEncoder.encodePublic(new Buffer(publicKey).toString('hex'), 'raw', 'pem');
+    // console.log("Private key:", privatePem);
+    // console.log("Public key:", publicPem);
+
+    // const info = {
+    //     hello: "world"
+    // };
+    // const hash = ethereumUtils.hashPersonalMessage(new Buffer(new TextEncoder('utf8').encode(JSON.stringify(info))));
+
+    // const s = secp256k1.sign(hash, privateKey);
+    // console.log(secp256k1.verify(hash, s.signature, publicKey));
+
+    // const esig = ethereumUtils.ecsign(hash, new Buffer(privateKey));
+    // // const esigInfo = ethereumUtils.fromRpcSig(esig);
+    // const origPubKey = ethereumUtils.ecrecover(hash, esig.v, esig.r, esig.s);
+    // const origAddress = ethereumUtils.pubToAddress(origPubKey);
+    // console.log(ethAddress, origAddress);
+
+    // const jwsSignature = jws.sign({
+    //     header: { alg: 'RS256' },
+    //     payload: info,
+    //     privateKey: privatePem
+    // });
+    // const jwsResult = jws.verify(jwsSignature, 'RS256', publicPem);
+    // console.log("JWS:", jwsSignature, jwsResult);
+
     // https://kobl.one/blog/create-full-ethereum-keypair-and-address/
-    const key = new NodeRSA({ b: 256 });
-    const keyPair = key.generateKeyPair();
-    const signature = jws.sign({
-      header: { alg: 'RS256' },
-      payload: 'asdfkljfsd',
-      privateKey: key.exportKey('private')
-    });
-    const result = jws.verify(signature, 'RS256', key.exportKey('public'));
+    // const key = new NodeRSA({ b: 256 });
+    // const keyPair = key.generateKeyPair();
+    // const signature = jws.sign({
+    //   header: { alg: 'RS256' },
+    //   payload: 'asdfkljfsd',
+    //   privateKey: key.exportKey('private')
+    // });
+    // const result = jws.verify(signature, 'RS256', key.exportKey('public'));
     // Address generation:  see https://ethereum.stackexchange.com/questions/15525/how-to-generate-an-ethereum-address-using-web3-js-using-a-string-of-text-or-brai
     // console.log(result, key.exportKey('public'), signature.length);
   }
+
   async start(): Promise<void> {
 
     await this.sign();
