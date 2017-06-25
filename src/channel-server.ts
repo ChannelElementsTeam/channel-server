@@ -15,10 +15,10 @@ import { UserRecord, ChannelMemberRecord, ChannelRecord, MessageRecord, ChannelI
 import { Utils } from "./utils";
 import { ChannelIdentityUtils } from "./common/channel-identity-utils";
 import { ProviderServicesListResponse, ChannelShareRequest, ChannelShareResponse, ChannelShareCodeResponse, ChannelAcceptRequest, ChannelCreateRequest, ChannelsListRequest, ChannelsListResponse } from "./common/channel-service-rest";
-import { SignedAddress, SignedFullIdentity, SignedBasicIdentity, ChannelMemberInfo } from "./common/channel-service-identity";
+import { SignedAddress, SignedFullIdentity, SignedBasicIdentity } from "./common/channel-service-identity";
 import { ChannelDeletedNotificationDetails, PingRequestDetails, ControlChannelMessage, ErrorDetails, HistoryMessageDetails, HistoryRequestDetails, HistoryResponseDetails, LeaveRequestDetails, JoinNotificationDetails, ChannelParticipantInfo, JoinResponseDetails, JoinRequestDetails, LeaveNotificationDetails } from "./common/channel-service-control";
 import { ChannelMessageUtils, ChannelMessage } from "./common/channel-message-utils";
-import { ChannelContractDetails, ChannelOptions, BasicChannelInformation, ChannelInformation } from "./common/channel-service-channel";
+import { ChannelContractDetails, ChannelOptions, BasicChannelInformation, ChannelInformation, ChannelMemberInfo } from "./common/channel-service-channel";
 
 const TOKEN_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const MAX_HISTORY_BUFFERED_SIZE = 50000;
