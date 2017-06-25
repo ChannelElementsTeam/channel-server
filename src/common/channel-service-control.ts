@@ -1,6 +1,113 @@
 
 import { SignedIdentity, FullIdentity, AddressIdentity } from "./channel-service-identity";
 
+// ----------------------------------------------------------------------------
+// This defines the content of the messages carried on the control channel
+// on the websocket
+// ----------------------------------------------------------------------------
+
+export interface ControlChannelMessage {
+  requestId?: string;
+  type: string;
+  details: JoinRequestDetails | JoinResponseDetails | JoinNotificationDetails |
+  LeaveRequestDetails | LeaveNotificationDetails |
+  HistoryRequestDetails | HistoryResponseDetails | HistoryMessageDetails |
+  PingRequestDetails | ErrorDetails | RateLimitDetails | ChannelDeletedNotificationDetails;
+}
+
+// type = 'join'
+export interface JoinRequestDetails {
+  channelAddress: string;
+  memberIdentity: SignedIdentity<AddressIdentity>;
+  participantIdentityDetails: any;
+}
+
+// type = 'join-response'
+export interface JoinResponseDetails {
+  channelAddress: string;
+  channelCode: number;
+  participantAddress: string;
+  participantCode: number;
+  participants: ChannelParticipantInfo[];
+}
+
+// type = 'leave'
+export interface LeaveRequestDetails {
+  channelAddress: string;
+  memberAddress: string;
+  permanently?: boolean;
+}
+
+// type = 'history'
+export interface HistoryRequestDetails {
+  channelAddress: string;
+  before: number;
+  after?: number;
+  maxCount: number;
+}
+
+// type = 'history-response'
+export interface HistoryResponseDetails {
+  count: number;
+  total: number;
+}
+
+// type = 'history-message'
+export interface HistoryMessageDetails {
+  timestamp: number;
+  channelAddress: string;
+  senderAddress: string;
+}
+
+// type = 'ping'
+export interface PingRequestDetails {
+  interval?: number;
+}
+
+// type = 'error'
+export interface ErrorDetails {
+  statusCode: number;
+  errorMessage: string;
+  channelAddress?: string;
+}
+
+// type = 'rate-limit'
+export interface RateLimitDetails {
+  channelAddress: string;
+  options: string[];
+}
+
+// type = 'notify-join'
+export interface JoinNotificationDetails {
+  channelAddress: string;
+  memberIdentity: SignedIdentity<FullIdentity>;
+
+  participantCode: number;
+  participantDetails: any;
+}
+
+// type = 'notify-leave'
+export interface LeaveNotificationDetails {
+  channelAddress: string;
+  participantAddress: string;
+  participantCode: number;
+  permanently: boolean;
+}
+
+// type = 'notify-channel-delete'
+export interface ChannelDeletedNotificationDetails {
+  channelAddress: string;
+}
+
+// ----------------------------------------------------------------------------
+// Miscellaneous interfaces
+// ----------------------------------------------------------------------------
+
+export interface ControlMessagePayload {
+  jsonMessage: ControlChannelMessage;
+  binaryPortion?: Uint8Array;
+}
+
 export interface ChannelParticipantIdentity {
   memberIdentity: SignedIdentity<FullIdentity>;
   participantDetails: any;
@@ -13,90 +120,4 @@ export interface ChannelParticipantInfo {
   isYou: boolean;
   memberSince: number;
   lastActive: number;
-}
-
-export interface ControlChannelMessage {
-  requestId?: string;
-  type: string; // see https://github.com/ChannelElementsTeam/channel-server/wiki/Control-Channel-Messages
-  details: JoinRequestDetails | JoinResponseDetails | JoinNotificationDetails |
-  LeaveRequestDetails | LeaveNotificationDetails |
-  HistoryRequestDetails | HistoryResponseDetails | HistoryMessageDetails |
-  PingRequestDetails | ErrorDetails | RateLimitDetails | ChannelDeletedNotificationDetails; // depends on type
-}
-
-export interface JoinRequestDetails {
-  channelAddress: string;
-  memberIdentity: SignedIdentity<AddressIdentity>;
-  participantIdentityDetails: any;
-}
-
-export interface JoinResponseDetails {
-  channelAddress: string;
-  channelCode: number;
-  participantAddress: string;
-  participantCode: number;
-  participants: ChannelParticipantInfo[];
-}
-
-export interface LeaveRequestDetails {
-  channelAddress: string;
-  memberAddress: string;
-  permanently?: boolean;
-}
-
-export interface HistoryRequestDetails {
-  channelAddress: string;
-  before: number;
-  after?: number;
-  maxCount: number;
-}
-
-export interface HistoryResponseDetails {
-  count: number;
-  total: number;
-}
-
-export interface HistoryMessageDetails {
-  timestamp: number;
-  channelAddress: string;
-  senderAddress: string;
-}
-
-export interface PingRequestDetails {
-  interval?: number;
-}
-
-export interface ErrorDetails {
-  statusCode: number;
-  errorMessage: string;
-  channelAddress?: string;
-}
-
-export interface RateLimitDetails {
-  channelAddress: string;
-  options: string[];
-}
-
-export interface JoinNotificationDetails {
-  channelAddress: string;
-  memberIdentity: SignedIdentity<FullIdentity>;
-
-  participantCode: number;
-  participantDetails: any;
-}
-
-export interface LeaveNotificationDetails {
-  channelAddress: string;
-  participantAddress: string;
-  participantCode: number;
-  permanently: boolean;
-}
-
-export interface ChannelDeletedNotificationDetails {
-  channelAddress: string;
-}
-
-export interface ControlMessagePayload {
-  jsonMessage: ControlChannelMessage;
-  binaryPortion?: Uint8Array;
 }

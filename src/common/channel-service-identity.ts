@@ -116,7 +116,7 @@ export class ChannelIdentityUtils {
     return jwsSignature;
   }
 
-  static verifyKeyIdentityObject<T extends KeyIdentity>(object: SignedIdentity<T>, expectedSignTime: number): boolean {
+  static verifyKeyIdentity<T extends KeyIdentity>(object: SignedIdentity<T>, expectedSignTime: number): boolean {
     return this.verifySignedObject(object, object.info.publicKey, expectedSignTime);
   }
 

@@ -246,7 +246,7 @@ export class ChannelServer implements TransportEventHandler {
       response.status(400).send("Invalid identity");
       return false;
     }
-    if (!ChannelIdentityUtils.verifyKeyIdentityObject(signedIdentity, Date.now())) {
+    if (!ChannelIdentityUtils.verifyKeyIdentity(signedIdentity, Date.now())) {
       response.status(400).send("Invalid identity signature or signedAt");
       return false;
     }

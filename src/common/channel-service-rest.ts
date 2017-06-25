@@ -33,6 +33,7 @@ export interface ChannelShareCodeResponse extends HasProtocolVersion, HasService
 
 // ----------------------------------------------------------------------------
 // REST Requests to serviceURL
+// All requests use POST and include signed identity
 // All requests and responses are in JSON
 // ----------------------------------------------------------------------------
 
@@ -81,7 +82,7 @@ export interface ChannelsListResponse {
 }
 
 // ----------------------------------------------------------------------------
-// Additional interfaces
+// Miscellaneous interfaces
 // ----------------------------------------------------------------------------
 
 export interface ProviderServiceEndpoints {
