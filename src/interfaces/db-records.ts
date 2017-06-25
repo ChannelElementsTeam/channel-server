@@ -1,5 +1,6 @@
 
-import { ChannelOptions, ChannelContractDetails, SignedChannelMemberIdentity, MemberServicesContractDetails } from "../common/channel-server-messages";
+import { ChannelContractDetails, MemberServicesContractDetails } from "../common/channel-service-channel";
+import { SignedFullIdentity } from "../common/channel-service-identity";
 
 export interface UserRecord {
   id: string;
@@ -11,7 +12,6 @@ export interface UserRecord {
 
 export interface ChannelRecord {
   channelAddress: string;
-  creatorUserId: string;
   creatorAddress: string;
   transportUrl: string;
   created: number;
@@ -23,8 +23,7 @@ export interface ChannelRecord {
 
 export interface ChannelMemberRecord {
   channelAddress: string;
-  userId: string;
-  identity: SignedChannelMemberIdentity;
+  identity: SignedFullIdentity;
   memberServices: MemberServicesContractDetails;
   added: number;
   status: string;

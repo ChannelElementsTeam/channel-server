@@ -15,8 +15,8 @@ import { db } from './db';
 import { ChannelServer } from './channel-server';
 
 import { clientTester } from './testing/client-test';
-import { ChannelServerResponse } from "./common/channel-server-messages";
-import { ChannelIdentityUtils } from "./common/channel-identity";
+import { ChannelIdentityUtils } from "./common/channel-identity-utils";
+import { ChannelServerResponse } from "./common/channel-service-rest";
 
 const VERSION = 1;
 const DYNAMIC_BASE = '/d';
@@ -33,7 +33,7 @@ class ChannelElementsServer {
     const keyInfo = ChannelIdentityUtils.getKeyInfo(privateKey);
     const signedIdentity = ChannelIdentityUtils.createSignedChannelMemberIdentity(keyInfo, "Bob", "https://google.com/myphoto.png", 'https://channelelements.com/d/share/7y8EF4s', { hair: "brown" });
     console.log("Signed Identity", signedIdentity);
-    const valid = ChannelIdentityUtils.verifySignedChannelMemberIdentity(signedIdentity, 0);
+    const valid = ChannelIdentityUtils.verifyIdentityObject(signedIdentity, 0);
     console.log("Verified", valid);
 
     // let privateKey: Buffer;

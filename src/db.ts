@@ -2,11 +2,12 @@ import { Cursor, MongoClient, Db, Collection } from "mongodb";
 
 import { ChannelRecord, ChannelMemberRecord, UserRecord, ChannelInvitation, MessageRecord } from "./interfaces/db-records";
 import { configuration } from "./configuration";
-import { ChannelOptions, ChannelContractDetails, SignedChannelMemberIdentity, MemberServicesContractDetails } from "./common/channel-server-messages";
+import { ChannelContractDetails } from "./common/channel-service-channel";
+import { SignedFullIdentity } from "./common/channel-service-identity";
+import { MemberServicesContractDetails } from "./common/channel-service-channel";
 
 export class Database {
   private db: Db;
-  private users: Collection;
   private channels: Collection;
   private channelMembers: Collection;
   private invitations: Collection;
@@ -19,16 +20,10 @@ export class Database {
       options.server = serverOptions;
     }
     this.db = await MongoClient.connect(configuration.get('mongo.mongoUrl', options));
-    await this.initializeUsers();
     await this.initializeChannels();
     await this.initializeChannelMembers();
     await this.initializeInvitations();
     await this.initializeMessages();
-  }
-
-  private async initializeUsers(): Promise<void> {
-    this.users = this.db.collection('users');
-    await this.users.createIndex({ id: 1 }, { unique: true });
   }
 
   private async initializeChannels(): Promise<void> {
@@ -55,41 +50,11 @@ export class Database {
     await this.messages.createIndex({ channelAddress: 1, timestamp: -1 });
   }
 
-  async insertUser(id: string, token: string, identity: any, status: string): Promise<UserRecord> {
-    const now = Date.now();
-    const record: UserRecord = {
-      id: id,
-      token: token,
-      created: now,
-      lastRequest: now,
-      status: status
-    };
-    await this.users.insert(record);
-    return record;
-  }
-
-  async findUserById(id: string): Promise<UserRecord> {
-    return await this.users.findOne<UserRecord>({ id: id });
-  }
-
-  async updateUserStatus(id: string, status: string): Promise<void> {
-    await this.users.update({ id: id }, { $set: { status: status } });
-  }
-
-  async updateUserLastRequest(id: string, at: number): Promise<void> {
-    await this.users.update({ id: id }, { $set: { lastRequest: at } });
-  }
-
-  async updateUserIdentity(id: string, identity: any): Promise<void> {
-    await this.users.update({ id: id }, { $set: { identity: identity } });
-  }
-
   async insertChannel(channelAddress: string, creatorUserId: string, creatorAddress: string, transportUrl: string, contract: ChannelContractDetails, status: string): Promise<ChannelRecord> {
     const now = Date.now();
     const record: ChannelRecord = {
       channelAddress: channelAddress,
       creatorAddress: creatorAddress,
-      creatorUserId: creatorUserId,
       transportUrl: transportUrl,
       created: now,
       lastUpdated: now,
@@ -101,7 +66,7 @@ export class Database {
     return record;
   }
 
-  async findChannelById(channelAddress: string): Promise<ChannelRecord> {
+  async findChannelByAddress(channelAddress: string): Promise<ChannelRecord> {
     return await this.channels.findOne<ChannelRecord>({ channelAddress: channelAddress });
   }
 
@@ -113,13 +78,12 @@ export class Database {
     await this.channels.update({ channelAddress: channelAddress }, { $set: { status: status, lastUpdated: Date.now() } });
   }
 
-  async insertChannelMember(channelAddress: string, identity: SignedChannelMemberIdentity, memberServicesContract: MemberServicesContractDetails, userId: string, status: string): Promise<ChannelMemberRecord> {
+  async insertChannelMember(channelAddress: string, identity: SignedFullIdentity, memberServicesContract: MemberServicesContractDetails, status: string): Promise<ChannelMemberRecord> {
     const now = Date.now();
     const record: ChannelMemberRecord = {
       channelAddress: channelAddress,
       identity: identity,
       memberServices: memberServicesContract,
-      userId: userId,
       added: now,
       status: status,
       lastActive: now
@@ -163,6 +127,15 @@ export class Database {
       query.lastActive = { $lte: lastActiveBefore };
     }
     return await this.channelMembers.count(query);
+  }
+
+  async findChannelMemberByChannelAndAddress(channelAddress: string, memberAddress: string, status: string): Promise<ChannelMemberRecord> {
+    const query: any = {
+      channelAddress: channelAddress,
+      "identity.address": memberAddress,
+      status: status,
+    };
+    return await this.channelMembers.findOne<ChannelMemberRecord>(query);
   }
 
   async findChannelMembersByAddress(address: string, status: string, lastActiveBefore = 0, limit = 50): Promise<ChannelMemberRecord[]> {
