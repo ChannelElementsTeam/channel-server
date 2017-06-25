@@ -4,13 +4,11 @@ import { configuration } from '../configuration';
 import { client as WebSocketClient, connection, IMessage } from 'websocket';
 import { TextDecoder, TextEncoder } from 'text-encoding';
 import * as url from "url";
-import { EntityAddress } from "../common/entity-address";
-import { ChannelIdentityUtils } from "../common/channel-identity-utils";
-import { SignedFullIdentity, SignedAddress } from "../common/channel-service-identity";
-import { ChannelShareCodeResponse, ChannelShareResponse, ChannelCreateRequest, ChannelShareRequest, ChannelAcceptRequest, ChannelsListResponse, ChannelCreateResponse, ChannelServerResponse, ChannelAcceptResponse, ChannelGetResponse, ChannelGetRequest, ChannelsListRequest, ChannelDeleteRequest } from "../common/channel-service-rest";
+import { ChannelShareCodeResponse, ChannelShareResponse, ChannelsListResponse, ChannelCreateResponse, ChannelServiceDescription, ChannelAcceptResponse, ChannelGetResponse, ChannelCreateDetails, ChannelShareDetails, ChannelServiceRequest, ProviderServiceEndpoints, ChannelsListDetails, ChannelAcceptDetails, ChannelGetDetails, ChannelDeleteDetails } from "../common/channel-service-rest";
 import { JoinResponseDetails, ControlChannelMessage, JoinRequestDetails, HistoryRequestDetails, LeaveRequestDetails } from "../common/channel-service-control";
 import { ChannelMessage, ChannelMessageUtils, MessageToSerialize } from "../common/channel-message-utils";
 import { ChannelContractDetails, ChannelInformation } from "../common/channel-service-channel";
+import { SignedIdentity, AddressIdentity, FullIdentity, ChannelIdentityUtils, KeyIdentity } from "../common/channel-service-identity";
 const RestClient = require('node-rest-client').Client;
 const basic = require('basic-authorization-header');
 
@@ -31,11 +29,12 @@ interface IRestClient {
 
 class TestClient {
   id: string;
-  signedAddress: SignedAddress;
-  signedIdentity: SignedFullIdentity;
+  signedAddress: SignedIdentity<AddressIdentity>;
+  signedIdentity: SignedIdentity<FullIdentity>;
+  serviceEndpoints: ProviderServiceEndpoints;
   socket?: WebSocketClient;
   conn?: connection;
-  providerResponse?: ChannelServerResponse;
+  providerResponse?: ChannelServiceDescription;
   channelResponse?: ChannelInformation;
   channelListResponse?: ChannelsListResponse;
   requestIndex = 1;
@@ -47,8 +46,8 @@ class TestClient {
   constructor(name: string) {
     this.privateKey = ChannelIdentityUtils.generatePrivateKey();
     const keyInfo = ChannelIdentityUtils.getKeyInfo(this.privateKey);
-    this.signedIdentity = ChannelIdentityUtils.createSignedChannelMemberIdentity(keyInfo, name);
-    this.signedAddress = ChannelIdentityUtils.createSignedAddress(keyInfo, this.signedIdentity.info.address);
+    this.signedIdentity = ChannelIdentityUtils.createSignedFullIdentity(keyInfo, name);
+    this.signedAddress = ChannelIdentityUtils.createSignedAddressIdentity(keyInfo, this.signedIdentity.info.address);
   }
   private requestHandlersById: { [requestId: string]: (controlMessage: ControlChannelMessage) => Promise<void> } = {};
   async handleMessage(messageInfo: ChannelMessage): Promise<void> {
@@ -202,7 +201,8 @@ export class ClientTester {
       this.restClient.get(providerUrl, (data: any, providerResponse: Response) => {
         if (providerResponse.statusCode === 200) {
           console.log("TestClient: provider information", data);
-          client.providerResponse = data as ChannelServerResponse;
+          client.providerResponse = data as ChannelServiceDescription;
+          client.serviceEndpoints = client.providerResponse.serviceEndpoints;
           resolve();
         } else {
           console.error("Failed", providerResponse.statusCode, new TextDecoder('utf-8').decode(data));
@@ -221,27 +221,31 @@ export class ClientTester {
           history: true,
           topology: 'many-to-many'
         },
-        details: {}
+        extensions: {}
       },
       participationContract: {
         type: "https://channelelements.com/contracts/test1",
-        details: {}
+        extensions: {}
       }
     };
-    const createRequest: ChannelCreateRequest = {
-      identity: client.signedIdentity,
+    const details: ChannelCreateDetails = {
       channelContract: contract,
-      memberServicesContract: null
+      memberContract: null
+    };
+    const request: ChannelServiceRequest<FullIdentity, ChannelCreateDetails> = {
+      type: 'create',
+      identity: client.signedIdentity,
+      details: details
     };
     const args: PostArgs = {
-      data: createRequest,
+      data: request,
       headers: {
         "Content-Type": "application/json"
       }
     };
     console.log("TestClient: Creating channel...");
     return new Promise<void>((resolve, reject) => {
-      this.restClient.post(client.providerResponse.services.createChannelUrl, args, (data: any, createResponse: Response) => {
+      this.restClient.post(client.providerResponse.serviceEndpoints.restServiceUrl, args, (data: any, createResponse: Response) => {
         if (createResponse.statusCode === 200) {
           console.log("TestClient: Channel created", data);
           client.channelResponse = data as ChannelCreateResponse;
@@ -329,9 +333,14 @@ export class ClientTester {
   }
 
   private async shareChannel(client: TestClient, name: string): Promise<void> {
-    const shareRequest: ChannelShareRequest = {
-      identity: client.signedAddress,
-      details: { name: name, sharing: true }
+    const details: ChannelShareDetails = {
+      channel: client.channelResponse.channelAddress,
+      extensions: { name: name, sharing: true }
+    };
+    const shareRequest: ChannelServiceRequest<FullIdentity, ChannelShareDetails> = {
+      type: 'share',
+      identity: client.signedIdentity,
+      details: details
     };
     const args: PostArgs = {
       data: shareRequest,
@@ -340,13 +349,13 @@ export class ClientTester {
       }
     };
     return new Promise<void>((resolve, reject) => {
-      this.restClient.post(client.channelResponse.shareChannelUrl, args, (data: any, createResponse: Response) => {
-        if (createResponse.statusCode === 200) {
+      this.restClient.post(client.serviceEndpoints.restServiceUrl, args, (data: any, shareResponse: Response) => {
+        if (shareResponse.statusCode === 200) {
           console.log("TestClient: Share code created", data);
           client.shareResponse = data as ChannelShareResponse;
           resolve();
         } else {
-          console.error("Failed", createResponse.statusCode, new TextDecoder('utf-8').decode(data));
+          console.error("Failed", shareResponse.statusCode, new TextDecoder('utf-8').decode(data));
           reject("Share failed");
         }
       });
@@ -376,10 +385,14 @@ export class ClientTester {
 
   private async accept(client: TestClient, name: string): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      const details: ChannelAcceptRequest = {
-        identity: client.signedIdentity,
+      const details: ChannelAcceptDetails = {
         invitationId: client.shareCodeResponse.invitationId,
-        memberServicesContract: null
+        memberContract: null
+      };
+      const request: ChannelServiceRequest<FullIdentity, ChannelAcceptDetails> = {
+        type: 'accept',
+        identity: client.signedIdentity,
+        details: details
       };
       const args: PostArgs = {
         data: details,
@@ -387,23 +400,28 @@ export class ClientTester {
           "Content-Type": "application/json"
         }
       };
-      this.restClient.post(client.shareCodeResponse.acceptChannelUrl, args, (data: any, joinChannelResponse: Response) => {
-        if (joinChannelResponse.statusCode === 200) {
+      this.restClient.post(client.serviceEndpoints.restServiceUrl, args, (data: any, acceptResponse: Response) => {
+        if (acceptResponse.statusCode === 200) {
           console.log("TestClient: Share code fetched", data);
           client.channelResponse = data as ChannelAcceptResponse;
           resolve();
         } else {
-          console.warn("Failed", joinChannelResponse.statusCode, new TextDecoder('utf-8').decode(data));
+          console.warn("Failed", acceptResponse.statusCode, new TextDecoder('utf-8').decode(data));
           reject("Failed to accept");
         }
       });
     });
   }
 
-  private async getChannel(client: TestClient, channelUrl: string): Promise<void> {
+  private async getChannel(client: TestClient, channel: string): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      const details: ChannelGetRequest = {
-        identity: client.signedAddress
+      const details: ChannelGetDetails = {
+        channel: channel
+      };
+      const request: ChannelServiceRequest<AddressIdentity, ChannelGetDetails> = {
+        type: 'get',
+        identity: client.signedAddress,
+        details: details
       };
       const args: PostArgs = {
         data: details,
@@ -411,7 +429,7 @@ export class ClientTester {
           "Content-Type": "application/json"
         }
       };
-      this.restClient.post(channelUrl, args, (data: any, channelResponse: Response) => {
+      this.restClient.post(client.serviceEndpoints.restServiceUrl, args, (data: any, channelResponse: Response) => {
         if (channelResponse.statusCode === 200) {
           client.channelResponse = data as ChannelGetResponse;
           console.log("TestClient: Channel fetched", JSON.stringify(data));
@@ -426,22 +444,25 @@ export class ClientTester {
 
   private async listChannels(client: TestClient): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      const details: ChannelsListRequest = {
-        identity: client.signedIdentity
+      const details: ChannelsListDetails = {};
+      const request: ChannelServiceRequest<KeyIdentity, ChannelsListDetails> = {
+        type: 'list',
+        identity: client.signedIdentity,
+        details: details
       };
       const args: PostArgs = {
-        data: details,
+        data: request,
         headers: {
           "Content-Type": "application/json"
         }
       };
-      this.restClient.post(client.providerResponse.services.channelListUrl, args, (data: any, channelResponse: Response) => {
-        if (channelResponse.statusCode === 200) {
+      this.restClient.post(client.serviceEndpoints.restServiceUrl, args, (data: any, channelListResponse: Response) => {
+        if (channelListResponse.statusCode === 200) {
           client.channelListResponse = data as ChannelsListResponse;
           console.log("TestClient: Channel list fetched", JSON.stringify(data));
           resolve();
         } else {
-          console.error("Failed", channelResponse.statusCode, new TextDecoder('utf-8').decode(data));
+          console.error("Failed", channelListResponse.statusCode, new TextDecoder('utf-8').decode(data));
           reject("List channels failed");
         }
       });
@@ -484,8 +505,13 @@ export class ClientTester {
 
   private deleteChannel(client: TestClient): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      const details: ChannelDeleteRequest = {
-        identity: client.signedAddress
+      const details: ChannelDeleteDetails = {
+        channel: client.channelResponse.channelAddress
+      };
+      const request: ChannelServiceRequest<AddressIdentity, ChannelDeleteDetails> = {
+        type: 'delete',
+        identity: client.signedAddress,
+        details: details
       };
       const args: PostArgs = {
         data: details,
@@ -493,12 +519,12 @@ export class ClientTester {
           "Content-Type": "application/json"
         }
       };
-      this.restClient.delete(client.channelResponse.deleteChannelUrl, args, (data: any, channelResponse: Response) => {
-        if (channelResponse.statusCode === 200) {
+      this.restClient.delete(client.serviceEndpoints.restServiceUrl, args, (data: any, deleteResponse: Response) => {
+        if (deleteResponse.statusCode === 200) {
           console.log("TestClient: Channel deleted", JSON.stringify(data));
           resolve();
         } else {
-          console.error("Failed", channelResponse.statusCode, new TextDecoder('utf-8').decode(data));
+          console.error("Failed", deleteResponse.statusCode, new TextDecoder('utf-8').decode(data));
           reject("Delete channel failed");
         }
       });

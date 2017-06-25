@@ -15,11 +15,10 @@ import { db } from './db';
 import { ChannelServer } from './channel-server';
 
 import { clientTester } from './testing/client-test';
-import { ChannelIdentityUtils } from "./common/channel-identity-utils";
-import { ChannelServerResponse } from "./common/channel-service-rest";
+import { ChannelServiceDescription } from "./common/channel-service-rest";
+import { ChannelIdentityUtils } from "./common/channel-service-identity";
 
 const VERSION = 1;
-const DYNAMIC_BASE = '/d';
 
 class ChannelElementsServer {
   private app: express.Application;
@@ -28,115 +27,79 @@ class ChannelElementsServer {
   private started: number;
   private channelServer: ChannelServer;
 
-  async sign(): Promise<void> {
-    const privateKey = ChannelIdentityUtils.generatePrivateKey();
-    const keyInfo = ChannelIdentityUtils.getKeyInfo(privateKey);
-    const signedIdentity = ChannelIdentityUtils.createSignedChannelMemberIdentity(keyInfo, "Bob", "https://google.com/myphoto.png", 'https://channelelements.com/d/share/7y8EF4s', { hair: "brown" });
-    console.log("Signed Identity", signedIdentity);
-    const valid = ChannelIdentityUtils.verifyIdentityObject(signedIdentity, 0);
-    console.log("Verified", valid);
+  // async sign(): Promise<void> {
+  //   const privateKey = ChannelIdentityUtils.generatePrivateKey();
+  //   const keyInfo = ChannelIdentityUtils.getKeyInfo(privateKey);
+  //   const signedIdentity = ChannelIdentityUtils.createSignedChannelMemberIdentity(keyInfo, "Bob", "https://google.com/myphoto.png", 'https://channelelements.com/d/share/7y8EF4s', { hair: "brown" });
+  //   console.log("Signed Identity", signedIdentity);
+  //   const valid = ChannelIdentityUtils.verifyIdentityObject(signedIdentity, 0);
+  //   console.log("Verified", valid);
 
-    // let privateKey: Buffer;
-    // do {
-    //     privateKey = crypto.randomBytes(32);
-    // } while (!secp256k1.privateKeyVerify(privateKey));
-    // const publicKey = secp256k1.publicKeyCreate(privateKey);
-    // const ethPublic = ethereumUtils.importPublic(new Buffer(publicKey));
-    // const ethAddress = ethereumUtils.pubToAddress(ethPublic, false);
+  // let privateKey: Buffer;
+  // do {
+  //     privateKey = crypto.randomBytes(32);
+  // } while (!secp256k1.privateKeyVerify(privateKey));
+  // const publicKey = secp256k1.publicKeyCreate(privateKey);
+  // const ethPublic = ethereumUtils.importPublic(new Buffer(publicKey));
+  // const ethAddress = ethereumUtils.pubToAddress(ethPublic, false);
 
-    // const keyEncoder = new KeyEncoder('secp256k1');
-    // const privatePem = keyEncoder.encodePrivate(new Buffer(privateKey).toString('hex'), 'raw', 'pem');
-    // const publicPem = keyEncoder.encodePublic(new Buffer(publicKey).toString('hex'), 'raw', 'pem');
-    // console.log("Private key:", privatePem);
-    // console.log("Public key:", publicPem);
+  // const keyEncoder = new KeyEncoder('secp256k1');
+  // const privatePem = keyEncoder.encodePrivate(new Buffer(privateKey).toString('hex'), 'raw', 'pem');
+  // const publicPem = keyEncoder.encodePublic(new Buffer(publicKey).toString('hex'), 'raw', 'pem');
+  // console.log("Private key:", privatePem);
+  // console.log("Public key:", publicPem);
 
-    // const info = {
-    //     hello: "world"
-    // };
-    // const hash = ethereumUtils.hashPersonalMessage(new Buffer(new TextEncoder('utf8').encode(JSON.stringify(info))));
+  // const info = {
+  //     hello: "world"
+  // };
+  // const hash = ethereumUtils.hashPersonalMessage(new Buffer(new TextEncoder('utf8').encode(JSON.stringify(info))));
 
-    // const s = secp256k1.sign(hash, privateKey);
-    // console.log(secp256k1.verify(hash, s.signature, publicKey));
+  // const s = secp256k1.sign(hash, privateKey);
+  // console.log(secp256k1.verify(hash, s.signature, publicKey));
 
-    // const esig = ethereumUtils.ecsign(hash, new Buffer(privateKey));
-    // // const esigInfo = ethereumUtils.fromRpcSig(esig);
-    // const origPubKey = ethereumUtils.ecrecover(hash, esig.v, esig.r, esig.s);
-    // const origAddress = ethereumUtils.pubToAddress(origPubKey);
-    // console.log(ethAddress, origAddress);
+  // const esig = ethereumUtils.ecsign(hash, new Buffer(privateKey));
+  // // const esigInfo = ethereumUtils.fromRpcSig(esig);
+  // const origPubKey = ethereumUtils.ecrecover(hash, esig.v, esig.r, esig.s);
+  // const origAddress = ethereumUtils.pubToAddress(origPubKey);
+  // console.log(ethAddress, origAddress);
 
-    // const jwsSignature = jws.sign({
-    //     header: { alg: 'RS256' },
-    //     payload: info,
-    //     privateKey: privatePem
-    // });
-    // const jwsResult = jws.verify(jwsSignature, 'RS256', publicPem);
-    // console.log("JWS:", jwsSignature, jwsResult);
+  // const jwsSignature = jws.sign({
+  //     header: { alg: 'RS256' },
+  //     payload: info,
+  //     privateKey: privatePem
+  // });
+  // const jwsResult = jws.verify(jwsSignature, 'RS256', publicPem);
+  // console.log("JWS:", jwsSignature, jwsResult);
 
-    // https://kobl.one/blog/create-full-ethereum-keypair-and-address/
-    // const key = new NodeRSA({ b: 256 });
-    // const keyPair = key.generateKeyPair();
-    // const signature = jws.sign({
-    //   header: { alg: 'RS256' },
-    //   payload: 'asdfkljfsd',
-    //   privateKey: key.exportKey('private')
-    // });
-    // const result = jws.verify(signature, 'RS256', key.exportKey('public'));
-    // Address generation:  see https://ethereum.stackexchange.com/questions/15525/how-to-generate-an-ethereum-address-using-web3-js-using-a-string-of-text-or-brai
-    // console.log(result, key.exportKey('public'), signature.length);
-  }
+  // https://kobl.one/blog/create-full-ethereum-keypair-and-address/
+  // const key = new NodeRSA({ b: 256 });
+  // const keyPair = key.generateKeyPair();
+  // const signature = jws.sign({
+  //   header: { alg: 'RS256' },
+  //   payload: 'asdfkljfsd',
+  //   privateKey: key.exportKey('private')
+  // });
+  // const result = jws.verify(signature, 'RS256', key.exportKey('public'));
+  // Address generation:  see https://ethereum.stackexchange.com/questions/15525/how-to-generate-an-ethereum-address-using-web3-js-using-a-string-of-text-or-brai
+  // console.log(result, key.exportKey('public'), signature.length);
+  // }
 
   async start(): Promise<void> {
 
-    await this.sign();
+    // await this.sign();
 
     this.setupExceptionHandling();
     await this.setupConfiguration();
     await db.initialize();
     await this.setupExpress();
-    this.channelServer = new ChannelServer(this.app, this.server, url.resolve(configuration.get('baseClientUri'), "/channel-elements.json"), configuration.get('baseClientUri'), configuration.get('baseClientUri'), DYNAMIC_BASE, configuration.get('baseTransportUri'), '/transport/s1', configuration.get('ping.interval', 30000), configuration.get('ping.timeout', 15000));
+    this.channelServer = new ChannelServer(this.app, this.server);
     await this.channelServer.start();
     await this.setupServerPing();
-    await this.setupChannelServerResponse();
     this.started = Date.now();
 
     clientTester.initialize(this.app);
 
     console.log("Channel Elements Server is running");
-  }
-
-  private setupChannelServerResponse() {
-    this.app.get('/channel-elements.json', (request: Request, response: Response) => {
-      const reply: ChannelServerResponse = {
-        protocolVersion: "0.1.0",
-        provider: {
-          name: "ChannelElements",
-          logo: url.resolve(configuration.get('baseClientUri'), '/s/logo.png'),
-          homepage: configuration.get('baseClientUri'),
-          details: {}
-        },
-        implementation: {
-          name: "Channel Elements Reference Server",
-          logo: url.resolve(configuration.get('baseClientUri'), '/s/logo.png'),
-          homepage: "https://github.com/ChannelElementsTeam/channel-server",
-          version: "0.1.0",
-          details: {
-            comment: "Under construction"
-          }
-        },
-        services: this.channelServer.getServicesList(),
-        implementationDetails: this.getServerImplementationDetails()
-      };
-      response.json(reply);
-    });
-  }
-
-  private getServerImplementationDetails(): any {
-    const result: any = {
-      implementation: "Reference Implementation",
-      by: "HivePoint, Inc.",
-      contact: "info@hivepoint.com"
-    };
-    return result;
   }
 
   private setupExceptionHandling(): void {

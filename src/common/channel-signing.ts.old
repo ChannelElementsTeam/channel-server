@@ -1,6 +1,6 @@
 import { TextDecoder, TextEncoder } from 'text-encoding';
 import * as crypto from 'crypto';
-import { SignedFullIdentity, SignableFullIdentity, SignedAddress, SignableAddress, SignedBasicIdentity, Signable, Signed } from "./channel-service-identity";
+import { FullIdentity, SignedIdentity, AddressIdentity } from "./channel-service-identity";
 const secp256k1 = require('secp256k1');
 const ethereumUtils = require('ethereumjs-util');
 const KeyEncoder = require('key-encoder');
@@ -8,14 +8,15 @@ const jws = require('jws');
 
 const MAX_VERIFY_CLOCK_SKEW = 1000 * 60 * 15;
 
-export interface KeyInfo {
-  privateKeyBytes: Uint8Array;
-  privateKeyPem: string;
-  publicKeyBytes: Uint8Array;
-  publicKeyPem: string;
-  ethereumAddress: string;
-  address: string;
+export interface Signed<T extends Signable> {
+  info: T;
+  signature: string;
 }
+
+export interface Signable {
+  signedAt: number;
+}
+
 export class ChannelIdentityUtils {
 
   static generatePrivateKey(): Uint8Array {
@@ -50,8 +51,8 @@ export class ChannelIdentityUtils {
     return result;
   }
 
-  static createSignedChannelMemberIdentity(keyInfo: KeyInfo, name?: string, imageUrl?: string, contactMeShareCode?: string, details?: any): SignedFullIdentity {
-    const identity: SignableFullIdentity = {
+  static createSignedFullIdentity(keyInfo: KeyInfo, name?: string, imageUrl?: string, contactMeShareCode?: string, extensions?: any): SignedIdentity<FullIdentity> {
+    const identity: FullIdentity = {
       address: keyInfo.address,
       account: keyInfo.ethereumAddress,
       publicKey: keyInfo.publicKeyPem,
@@ -66,19 +67,19 @@ export class ChannelIdentityUtils {
     if (contactMeShareCode) {
       identity.contactMeShareCode = contactMeShareCode;
     }
-    if (details) {
-      identity.details = details;
+    if (extensions) {
+      identity.extensions = extensions;
     }
-    const result: SignedFullIdentity = {
+    const result: SignedIdentity<FullIdentity> = {
       info: identity,
       signature: this.sign(keyInfo, identity)
     };
     return result;
   }
 
-  static createSignedAddress(keyInfo: KeyInfo, address: string): SignedAddress {
-    const addressInfo: SignableAddress = {
-      address: address,
+  static createSignedAddress(keyInfo: KeyInfo, address: string): SignedIdentity<AddressIdentity> {
+    const addressInfo: AddressIdentity = {
+      memberAddress: address,
       signedAt: Date.now()
     };
     const result: SignedAddress = {
@@ -135,4 +136,13 @@ export class ChannelIdentityUtils {
     return hash.digest('base64');
   }
 
+}
+
+export interface KeyInfo {
+  privateKeyBytes: Uint8Array;
+  privateKeyPem: string;
+  publicKeyBytes: Uint8Array;
+  publicKeyPem: string;
+  ethereumAddress: string;
+  address: string;
 }

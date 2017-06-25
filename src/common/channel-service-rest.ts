@@ -1,8 +1,11 @@
-import { SignedFullIdentity, SignedAddress, SignedBasicIdentity } from "./channel-service-identity";
-import { MemberServicesContractDetails, ChannelContractDetails, ChannelInformation, BasicChannelInformation } from "./channel-service-channel";
+import { MemberContractDetails, ChannelContractDetails, ChannelInformation, BasicChannelInformation } from "./channel-service-channel";
+import { HasPublicKey, HasExtendedIdentity, AddressIdentity, SignedIdentity, Signable } from "./channel-service-identity";
 
-export interface ChannelServerResponse {
-  protocolVersion: string;  // e.g., "1.0.0":  conforms to which version of the specification
+export const CHANNELS_PROTOCOL_VERSION = '0.2.0';
+// ----------------------------------------------------------------------------
+// JSON response to /channel-elements.json
+// ----------------------------------------------------------------------------
+export interface ChannelServiceDescription extends HasProtocolVersion, HasServiceEndpoints, HasExtensions {
   provider: {
     name: string;
     logo: string;
@@ -14,74 +17,95 @@ export interface ChannelServerResponse {
     logo: string;
     homepage: string;
     version: string;
-    details: any;
+    extensions: any;
   };
-  services: ProviderServicesListResponse;
-  implementationDetails: any; // for implementor to provide additional information
+  serviceEndpoints: ProviderServiceEndpoints;
 }
 
-export interface ProviderServicesListResponse {
-  providerUrl: string;
-  serviceHomeUrl: string;
-  accountUrl: string;
-  createChannelUrl: string;
-  channelListUrl: string;
+// ----------------------------------------------------------------------------
+// Response to GET share code URL (when request contains header: Accepts: application/json)
+// ----------------------------------------------------------------------------
+
+export interface ChannelShareCodeResponse extends HasProtocolVersion, HasServiceEndpoints, HasExtensions {
+  invitationId: string;
+  channelInfo: BasicChannelInformation;
 }
 
-// POST /d/channels/create
-export interface ChannelCreateRequest extends ChannelServiceRequest<SignedFullIdentity> {
+// ----------------------------------------------------------------------------
+// REST Requests to serviceURL
+// All requests and responses are in JSON
+// ----------------------------------------------------------------------------
+
+export interface ChannelServiceRequest<I extends AddressIdentity, T> {
+  type: string;
+  identity: SignedIdentity<I>; // Different requests require different types of identity
+  details: T;
+}
+
+// type = 'create', I = FullIdentity
+export interface ChannelCreateDetails extends HasMemberContractDetails {
   channelContract: ChannelContractDetails; // shared with everyone
-  memberServicesContract: MemberServicesContractDetails; // between me and service provider only
 }
 export interface ChannelCreateResponse extends ChannelInformation { }
 
-// POST /d/channels/:channel/share
-export interface ChannelShareRequest extends ChannelServiceRequest<SignedAddress> {
-  details: any;
+// type = 'share', I = AddressIdentity
+export interface ChannelShareDetails extends HasChannel, HasExtensions {
+  extensions: any;
 }
-
-export interface ChannelGetRequest extends ChannelServiceRequest<SignedAddress> { }
-
-export interface ChannelGetResponse extends ChannelInformation { }
 export interface ChannelShareResponse {
   shareCodeUrl: string;
 }
 
-// POST /d/channels/:channel/accept
-export interface ChannelAcceptRequest extends ChannelServiceRequest<SignedFullIdentity> {
-  invitationId: string;
-  memberServicesContract: MemberServicesContractDetails; // between me and service provider only
-}
+// type = 'get', I = AddressIdentity
+export interface ChannelGetDetails extends HasChannel { }
+export interface ChannelGetResponse extends ChannelInformation { }
 
+// type = 'accept', I = FullIdentity
+export interface ChannelAcceptDetails extends HasMemberContractDetails {
+  invitationId: string;
+}
 export interface ChannelAcceptResponse extends ChannelInformation { }
 
-// POST /d/channels/:channel/delete
-export interface ChannelDeleteRequest extends ChannelServiceRequest<SignedAddress> { }
-
+// type = 'delete', I = AddressIdentity
+export interface ChannelDeleteDetails extends HasChannel { }
 export interface ChannelDeleteResponse { }
 
-// POST /d/channels/list
-export interface ChannelsListRequest extends ChannelServiceRequest<SignedBasicIdentity> {
+// type = 'list', I = KeyedIdentity
+export interface ChannelsListDetails {
   lastActiveBefore?: number;
   limit?: number;
 }
-
 export interface ChannelsListResponse {
   total: number;
   channels: ChannelInformation[];
 }
 
-// In response to GET on a share code URL:
-export interface ChannelShareCodeResponse {
-  providerUrl: string;
-  acceptChannelUrl: string;
-  invitationId: string;
-  channelInfo: BasicChannelInformation;
-  invitationDetails: any;
+// ----------------------------------------------------------------------------
+// Additional interfaces
+// ----------------------------------------------------------------------------
+
+export interface ProviderServiceEndpoints {
+  descriptionUrl: string; // returns ChannelServiceDescription in JSON
+  homeUrl: string;  // human-oriented service description, suitable for browser
+  restServiceUrl: string;  // to use the service, always with POST with identity and signature
 }
 
-// Supporting interfaces
+export interface HasExtensions {
+  extensions?: any;
+}
 
-export interface ChannelServiceRequest<T> {
-  identity: T;
+export interface HasMemberContractDetails {
+  memberContract: MemberContractDetails;
+}
+
+export interface HasChannel {
+  channel: string;
+}
+
+export interface HasProtocolVersion {
+  protocolVersion: string;  // e.g., "1.0.0":  conforms to which version of the specification
+}
+
+export interface HasServiceEndpoints {
+  serviceEndpoints: ProviderServiceEndpoints;
 }

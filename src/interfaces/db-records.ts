@@ -1,6 +1,6 @@
 
-import { ChannelContractDetails, MemberServicesContractDetails } from "../common/channel-service-channel";
-import { SignedFullIdentity } from "../common/channel-service-identity";
+import { ChannelContractDetails, MemberContractDetails } from "../common/channel-service-channel";
+import { SignedIdentity, FullIdentity } from "../common/channel-service-identity";
 
 export interface UserRecord {
   id: string;
@@ -23,8 +23,8 @@ export interface ChannelRecord {
 
 export interface ChannelMemberRecord {
   channelAddress: string;
-  identity: SignedFullIdentity;
-  memberServices: MemberServicesContractDetails;
+  identity: SignedIdentity<FullIdentity>;
+  memberServices: MemberContractDetails;
   added: number;
   status: string;
   lastActive: number;
@@ -34,7 +34,7 @@ export interface ChannelInvitation {
   id: string;
   sharedByAddress: string;
   channelAddress: string;
-  details?: any;
+  extensions?: any;
   created: number;
 }
 

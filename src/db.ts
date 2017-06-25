@@ -3,8 +3,8 @@ import { Cursor, MongoClient, Db, Collection } from "mongodb";
 import { ChannelRecord, ChannelMemberRecord, UserRecord, ChannelInvitation, MessageRecord } from "./interfaces/db-records";
 import { configuration } from "./configuration";
 import { ChannelContractDetails } from "./common/channel-service-channel";
-import { SignedFullIdentity } from "./common/channel-service-identity";
-import { MemberServicesContractDetails } from "./common/channel-service-channel";
+import { SignedIdentity, FullIdentity } from "./common/channel-service-identity";
+import { MemberContractDetails } from "./common/channel-service-channel";
 
 export class Database {
   private db: Db;
@@ -50,7 +50,7 @@ export class Database {
     await this.messages.createIndex({ channelAddress: 1, timestamp: -1 });
   }
 
-  async insertChannel(channelAddress: string, creatorUserId: string, creatorAddress: string, transportUrl: string, contract: ChannelContractDetails, status: string): Promise<ChannelRecord> {
+  async insertChannel(channelAddress: string, creatorAddress: string, transportUrl: string, contract: ChannelContractDetails, status: string): Promise<ChannelRecord> {
     const now = Date.now();
     const record: ChannelRecord = {
       channelAddress: channelAddress,
@@ -78,7 +78,7 @@ export class Database {
     await this.channels.update({ channelAddress: channelAddress }, { $set: { status: status, lastUpdated: Date.now() } });
   }
 
-  async insertChannelMember(channelAddress: string, identity: SignedFullIdentity, memberServicesContract: MemberServicesContractDetails, status: string): Promise<ChannelMemberRecord> {
+  async insertChannelMember(channelAddress: string, identity: SignedIdentity<FullIdentity>, memberServicesContract: MemberContractDetails, status: string): Promise<ChannelMemberRecord> {
     const now = Date.now();
     const record: ChannelMemberRecord = {
       channelAddress: channelAddress,
@@ -149,13 +149,13 @@ export class Database {
     return await this.channelMembers.find<ChannelMemberRecord>(query).sort({ lastActive: -1 }).limit(limit).toArray();
   }
 
-  async insertInvitation(id: string, sharedByAddress: string, channelAddress: string, details: any): Promise<ChannelInvitation> {
+  async insertInvitation(id: string, sharedByAddress: string, channelAddress: string, extensions: any): Promise<ChannelInvitation> {
     const now = Date.now();
     const record: ChannelInvitation = {
       id: id,
       sharedByAddress: sharedByAddress,
       channelAddress: channelAddress,
-      details: details,
+      extensions: extensions,
       created: now
     };
     await this.invitations.insert(record);

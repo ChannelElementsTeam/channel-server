@@ -1,8 +1,8 @@
 
-import { SignedFullIdentity, SignedAddress } from "./channel-service-identity";
+import { SignedIdentity, FullIdentity, AddressIdentity } from "./channel-service-identity";
 
 export interface ChannelParticipantIdentity {
-  memberIdentity: SignedFullIdentity;
+  memberIdentity: SignedIdentity<FullIdentity>;
   participantDetails: any;
 }
 
@@ -26,7 +26,7 @@ export interface ControlChannelMessage {
 
 export interface JoinRequestDetails {
   channelAddress: string;
-  memberIdentity: SignedAddress;
+  memberIdentity: SignedIdentity<AddressIdentity>;
   participantIdentityDetails: any;
 }
 
@@ -79,7 +79,7 @@ export interface RateLimitDetails {
 
 export interface JoinNotificationDetails {
   channelAddress: string;
-  memberIdentity: SignedFullIdentity;
+  memberIdentity: SignedIdentity<FullIdentity>;
 
   participantCode: number;
   participantDetails: any;

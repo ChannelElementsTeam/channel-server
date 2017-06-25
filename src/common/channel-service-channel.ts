@@ -1,10 +1,8 @@
-import { SignedFullIdentity } from "./channel-service-identity";
+
+import { SignedIdentity, FullIdentity } from "./channel-service-identity";
 
 export interface ChannelInformation extends BasicChannelInformation {
   transportUrl: string;
-  channelUrl: string;
-  shareChannelUrl: string;
-  deleteChannelUrl?: string;
   isCreator: boolean;
   members: ChannelMemberInfo[]; // in reverse chronological order based on lastActive; list may be truncated (compare against memberCount)
   lastUpdated: number;
@@ -18,7 +16,7 @@ export interface BasicChannelInformation {
 }
 
 export interface ChannelMemberInfo {
-  identity: SignedFullIdentity;
+  identity: SignedIdentity<FullIdentity>;
   isCreator: boolean;
   memberSince: number;
   lastActive: number;
@@ -32,11 +30,11 @@ export interface ChannelContractDetails {
 
 export interface ServiceContractInfo {
   options: ChannelOptions;
-  details: any;
+  extensions: any;
 }
 export interface ParticipationContract {
   type: string;
-  details?: any;
+  extensions?: any;
 }
 
 export interface ChannelOptions {
@@ -51,12 +49,12 @@ export interface ChannelOptions {
   topology: string; // many-to-many, one-to-many, many-to-one
 }
 
-export interface MemberServicesContractDetails {
+export interface MemberContractDetails {
   notificationType: string; // none, sms, web-push
-  details?: MemberServicesContractSmsDetails; // | others depending on type
+  notificationDetails?: MemberContractSmsDetails; // | others depending on type
 }
 
-export interface MemberServicesContractSmsDetails {
+export interface MemberContractSmsDetails {
   smsNumber: string;  // E.164 format, e.g., +16505551212
   reference: string; // something to be appeneded to message -- typically client URL
 }
