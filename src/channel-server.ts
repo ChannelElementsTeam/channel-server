@@ -89,6 +89,7 @@ export class ChannelServer implements TransportEventHandler {
   }
 
   private async handleProviderRequest(request: Request, response: Response): Promise<void> {
+    console.log("ChannelServer.handleProviderRequest");
     const reply: ChannelServiceDescription = {
       protocolVersion: "0.1.0",
       provider: {
@@ -159,6 +160,7 @@ export class ChannelServer implements TransportEventHandler {
   }
 
   private async handleCreateRequest(request: Request, response: Response): Promise<void> {
+    console.log("ChannelServer.handleCreateRequest");
     const createRequest = request.body as ChannelServiceRequest<FullIdentity, ChannelCreateDetails>;
     if (!this.validateFullIdentity(createRequest.identity, response)) {
       return;
@@ -169,10 +171,11 @@ export class ChannelServer implements TransportEventHandler {
     if (!this.validateMemberContract(createRequest.details.memberContract, response)) {
       return;
     }
-    await this.createChannel(createRequest.identity, createRequest.details, request, response);
+    this.createChannel(createRequest.identity, createRequest.details, request, response);
   }
 
   private async handleShareRequest(request: Request, response: Response): Promise<void> {
+    console.log("ChannelServer.handleShareRequest");
     const shareRequest = request.body as ChannelServiceRequest<AddressIdentity, ChannelShareDetails>;
     const channelRecord = await this.getChannelRecord(shareRequest.details.channel);
     const channelMemberRecord = await this.getChannelMemberRecord(shareRequest.details.channel, shareRequest.identity.info.address);
@@ -183,6 +186,7 @@ export class ChannelServer implements TransportEventHandler {
   }
 
   private async handleGetRequest(request: Request, response: Response): Promise<void> {
+    console.log("ChannelServer.handleGetRequest");
     const getRequest = request.body as ChannelServiceRequest<AddressIdentity, ChannelGetDetails>;
     const channelRecord = await this.getChannelRecord(getRequest.details.channel);
     const channelMemberRecord = await this.getChannelMemberRecord(getRequest.details.channel, getRequest.identity.info.address);
@@ -192,6 +196,7 @@ export class ChannelServer implements TransportEventHandler {
     await this.getChannel(channelRecord, channelMemberRecord, request, response);
   }
   private async handleAcceptRequest(request: Request, response: Response): Promise<void> {
+    console.log("ChannelServer.handleAcceptRequest");
     const acceptRequest = request.body as ChannelServiceRequest<FullIdentity, ChannelAcceptDetails>;
     const invitation = await this.getInvitation(acceptRequest.details.invitationId);
     if (!invitation) {
@@ -216,6 +221,7 @@ export class ChannelServer implements TransportEventHandler {
     await this.acceptInvitation(acceptRequest.identity, invitation, channelRecord, acceptRequest.details, request, response);
   }
   private async handleDeleteRequest(request: Request, response: Response): Promise<void> {
+    console.log("ChannelServer.handleDeleteRequest");
     const deleteRequest = request.body as ChannelServiceRequest<AddressIdentity, ChannelDeleteDetails>;
     const channelRecord = await this.getChannelRecord(deleteRequest.details.channel);
     const channelMemberRecord = await this.getChannelMemberRecord(deleteRequest.details.channel, deleteRequest.identity.info.address);
@@ -230,6 +236,7 @@ export class ChannelServer implements TransportEventHandler {
   }
 
   private async handleListRequest(request: Request, response: Response): Promise<void> {
+    console.log("ChannelServer.handleListRequest");
     const listRequest = request.body as ChannelServiceRequest<KeyIdentity, ChannelsListDetails>;
     if (!this.validateKeyIdentity(listRequest.identity, response)) {
       return;
@@ -256,6 +263,7 @@ export class ChannelServer implements TransportEventHandler {
   private async validateAddressIdentity(signedIdentity: SignedIdentity<AddressIdentity>, channelRecord: ChannelRecord, channelMemberRecord: ChannelMemberRecord, response: Response): Promise<boolean> {
     if (!channelRecord || !channelMemberRecord) {
       response.status(400).send("Invalid channel or member");
+      return false;
     }
     if (!signedIdentity || !signedIdentity.signature || !signedIdentity.info || !signedIdentity.info.address || !signedIdentity.info.signedAt) {
       response.status(400).send("Invalid identity");
@@ -292,13 +300,14 @@ export class ChannelServer implements TransportEventHandler {
   private async validateChannelContractDetails(contract: ChannelContractDetails, response: Response): Promise<boolean> {
     if (!contract || !contract.package || !contract.participationContract || !contract.serviceContract) {
       response.status(400).send("Invalid contract");
-      return;
+      return false;
     }
     if (!contract.participationContract.type) {
       response.status(400).send("Invalid participation contract");
-      return;
+      return false;
     }
     this.fillAllOptions(contract.serviceContract.options);
+    return true;
   }
 
   private async validateMemberContract(memberContract: MemberContractDetails, response: Response): Promise<boolean> {

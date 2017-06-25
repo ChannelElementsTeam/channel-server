@@ -17,7 +17,7 @@
       "type": "node",
       "request": "launch",
       "program": "${workspaceRoot}/src/index.ts",
-      "smartStep": false,
+      "smartStep": true,
       "stopOnEntry": false,
       "args": [],
       "sourceMaps": true,
