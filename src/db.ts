@@ -2,9 +2,7 @@ import { Cursor, MongoClient, Db, Collection } from "mongodb";
 
 import { ChannelRecord, ChannelMemberRecord, UserRecord, ChannelInvitation, MessageRecord } from "./interfaces/db-records";
 import { configuration } from "./configuration";
-import { ChannelContractDetails } from "./common/channel-service-channel";
-import { SignedIdentity, FullIdentity } from "./common/channel-service-identity";
-import { MemberContractDetails } from "./common/channel-service-channel";
+import { ChannelContractDetails, SignedIdentity, FullIdentity, MemberContractDetails } from "channels-common";
 
 export class Database {
   private db: Db;

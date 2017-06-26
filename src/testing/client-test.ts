@@ -4,11 +4,11 @@ import { configuration } from '../configuration';
 import { client as WebSocketClient, connection, IMessage } from 'websocket';
 import { TextDecoder, TextEncoder } from 'text-encoding';
 import * as url from "url";
-import { ChannelShareCodeResponse, ChannelShareResponse, ChannelsListResponse, ChannelCreateResponse, ChannelServiceDescription, ChannelAcceptResponse, ChannelGetResponse, ChannelCreateDetails, ChannelShareDetails, ChannelServiceRequest, ProviderServiceEndpoints, ChannelsListDetails, ChannelAcceptDetails, ChannelGetDetails, ChannelDeleteDetails } from "../common/channel-service-rest";
-import { JoinResponseDetails, ControlChannelMessage, JoinRequestDetails, HistoryRequestDetails, LeaveRequestDetails } from "../common/channel-service-control";
-import { ChannelMessage, ChannelMessageUtils, MessageToSerialize } from "../common/channel-message-utils";
-import { ChannelContractDetails, ChannelInformation, MemberContractDetails } from "../common/channel-service-channel";
-import { SignedIdentity, AddressIdentity, FullIdentity, ChannelIdentityUtils, KeyIdentity } from "../common/channel-service-identity";
+import { ChannelShareCodeResponse, ChannelShareResponse, ChannelsListResponse, ChannelCreateResponse, ChannelServiceDescription, ChannelAcceptResponse, ChannelGetResponse, ChannelCreateDetails, ChannelShareDetails, ChannelServiceRequest, ProviderServiceEndpoints, ChannelsListDetails, ChannelAcceptDetails, ChannelGetDetails, ChannelDeleteDetails } from "channels-common";
+import { JoinResponseDetails, ControlChannelMessage, JoinRequestDetails, HistoryRequestDetails, LeaveRequestDetails } from "channels-common";
+import { ChannelMessage, ChannelMessageUtils, MessageToSerialize } from "channels-common";
+import { ChannelContractDetails, ChannelInformation, MemberContractDetails } from "channels-common";
+import { SignedIdentity, AddressIdentity, FullIdentity, ChannelIdentityUtils, KeyIdentity } from "channels-common";
 const RestClient = require('node-rest-client').Client;
 const basic = require('basic-authorization-header');
 

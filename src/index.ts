@@ -15,8 +15,7 @@ import { db } from './db';
 import { ChannelServer } from './channel-server';
 
 import { clientTester } from './testing/client-test';
-import { ChannelServiceDescription } from "./common/channel-service-rest";
-import { ChannelIdentityUtils } from "./common/channel-service-identity";
+import { ChannelServiceDescription, ChannelIdentityUtils } from "channels-common";
 
 const VERSION = 1;
 

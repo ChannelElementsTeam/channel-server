@@ -13,12 +13,13 @@ import { TransportServer, TransportEventHandler, MessageHandlingDirective, Contr
 import { db } from "./db";
 import { UserRecord, ChannelMemberRecord, ChannelRecord, MessageRecord, ChannelInvitation } from './interfaces/db-records';
 import { Utils } from "./utils";
-import { ChannelDeletedNotificationDetails, PingRequestDetails, ControlChannelMessage, ErrorDetails, HistoryMessageDetails, HistoryRequestDetails, HistoryResponseDetails, LeaveRequestDetails, JoinNotificationDetails, ChannelParticipantInfo, JoinResponseDetails, JoinRequestDetails, LeaveNotificationDetails } from "./common/channel-service-control";
-import { ChannelMessageUtils, ChannelMessage } from "./common/channel-message-utils";
-import { ChannelContractDetails, ChannelOptions, BasicChannelInformation, ChannelInformation, ChannelMemberInfo, MemberContractDetails } from "./common/channel-service-channel";
-import { ProviderServiceEndpoints, ChannelServiceRequest, ChannelCreateDetails, ChannelShareDetails, ChannelGetDetails, ChannelAcceptDetails, ChannelsListDetails, ChannelDeleteDetails, ChannelShareCodeResponse, CHANNELS_PROTOCOL, ChannelShareResponse, ChannelDeleteResponse, ChannelsListResponse, ChannelServiceDescription } from "./common/channel-service-rest";
-import { AddressIdentity, ChannelIdentityUtils, FullIdentity, KeyIdentity, SignedIdentity } from "./common/channel-service-identity";
 import { configuration } from "./configuration";
+
+import { ChannelDeletedNotificationDetails, PingRequestDetails, ControlChannelMessage, ErrorDetails, HistoryMessageDetails, HistoryRequestDetails, HistoryResponseDetails, LeaveRequestDetails,
+  JoinNotificationDetails, ChannelParticipantInfo, JoinResponseDetails, JoinRequestDetails, LeaveNotificationDetails, ChannelMessageUtils, ChannelMessage, ChannelContractDetails, ChannelOptions,
+  BasicChannelInformation, ChannelInformation, ChannelMemberInfo, MemberContractDetails, ProviderServiceEndpoints, ChannelServiceRequest, ChannelCreateDetails, ChannelShareDetails, ChannelGetDetails,
+  ChannelAcceptDetails, ChannelsListDetails, ChannelDeleteDetails, ChannelShareCodeResponse, CHANNELS_PROTOCOL, ChannelShareResponse, ChannelDeleteResponse, ChannelsListResponse, ChannelServiceDescription,
+  AddressIdentity, ChannelIdentityUtils, FullIdentity, KeyIdentity, SignedIdentity } from "channels-common";
 
 const TOKEN_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const MAX_HISTORY_BUFFERED_SIZE = 50000;
