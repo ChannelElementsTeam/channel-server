@@ -8,7 +8,8 @@ import { ChannelShareCodeResponse, ChannelShareResponse, ChannelsListResponse, C
 import { JoinResponseDetails, ControlChannelMessage, JoinRequestDetails, HistoryRequestDetails, LeaveRequestDetails } from "channels-common";
 import { ChannelMessage, ChannelMessageUtils, MessageToSerialize } from "channels-common";
 import { ChannelContractDetails, ChannelInformation, MemberContractDetails } from "channels-common";
-import { SignedIdentity, AddressIdentity, FullIdentity, ChannelIdentityUtils, KeyIdentity } from "channels-common";
+import { AddressIdentity, FullIdentity, ChannelIdentityUtils, KeyIdentity, SignedAddressIdentity, SignedKeyIdentity } from "channels-common";
+import { Utils } from "../utils";
 const RestClient = require('node-rest-client').Client;
 const basic = require('basic-authorization-header');
 
@@ -29,8 +30,8 @@ interface IRestClient {
 
 class TestClient {
   id: string;
-  signedAddress: SignedIdentity<AddressIdentity>;
-  signedIdentity: SignedIdentity<FullIdentity>;
+  signedAddress: SignedAddressIdentity;
+  signedIdentity: SignedKeyIdentity;
   serviceEndpoints: ProviderServiceEndpoints;
   socket?: WebSocketClient;
   conn?: connection;
@@ -46,8 +47,8 @@ class TestClient {
   constructor(name: string) {
     this.privateKey = ChannelIdentityUtils.generatePrivateKey();
     const keyInfo = ChannelIdentityUtils.getKeyInfo(this.privateKey);
-    this.signedIdentity = ChannelIdentityUtils.createSignedFullIdentity(keyInfo, name);
-    this.signedAddress = ChannelIdentityUtils.createSignedAddressIdentity(keyInfo, this.signedIdentity.info.address);
+    this.signedIdentity = ChannelIdentityUtils.createSignedFullIdentity(keyInfo, name, "https://example.org/pictures/" + name + ".png", "https://example.org/i/" + Utils.createToken(6), {});
+    this.signedAddress = ChannelIdentityUtils.createSignedAddressIdentity(keyInfo, keyInfo.address);
   }
   private requestHandlersById: { [requestId: string]: (controlMessage: ControlChannelMessage) => Promise<void> } = {};
   async handleMessage(messageInfo: ChannelMessage): Promise<void> {
@@ -215,7 +216,7 @@ export class ClientTester {
 
   private async createChannel(client: TestClient, name: string): Promise<void> {
     const contract: ChannelContractDetails = {
-      package: "default",
+      package: "https://github.com/ChannelsTeam/contract-standard",
       serviceContract: {
         options: {
           history: true,
@@ -224,7 +225,7 @@ export class ClientTester {
         extensions: {}
       },
       participationContract: {
-        type: "https://channelelements.com/contracts/test1",
+        type: "https://channelelements.com/contracts/participation/standard",
         extensions: {}
       }
     };
@@ -235,7 +236,7 @@ export class ClientTester {
       channelContract: contract,
       memberContract: memberContract
     };
-    const request: ChannelServiceRequest<FullIdentity, ChannelCreateDetails> = {
+    const request: ChannelServiceRequest<SignedKeyIdentity, ChannelCreateDetails> = {
       type: 'create',
       identity: client.signedIdentity,
       details: details
@@ -253,6 +254,11 @@ export class ClientTester {
           console.log("TestClient: Channel created", JSON.stringify(data));
           client.channelResponse = data as ChannelCreateResponse;
           console.log("TestClient: channel list reply", JSON.stringify(client.channelResponse));
+          // console.log("Create Channel Request --------------------------------------------------------------------------");
+          // console.log(JSON.stringify(request, null, 2));
+          // console.log("Create Channel Response --------------------------------------------------------------------------");
+          // console.log(JSON.stringify(data, null, 2));
+          // console.log("Create Channel --------------------------------------------------------------------------");
           resolve();
         } else {
           console.log("TestClient: Failed", createResponse.statusCode, new TextDecoder('utf-8').decode(data));
@@ -340,9 +346,9 @@ export class ClientTester {
       channel: client.channelResponse.channelAddress,
       extensions: { name: name, sharing: true }
     };
-    const shareRequest: ChannelServiceRequest<FullIdentity, ChannelShareDetails> = {
+    const shareRequest: ChannelServiceRequest<SignedAddressIdentity, ChannelShareDetails> = {
       type: 'share',
-      identity: client.signedIdentity,
+      identity: client.signedAddress,
       details: details
     };
     const args: PostArgs = {
@@ -396,7 +402,7 @@ export class ClientTester {
         invitationId: client.shareCodeResponse.invitationId,
         memberContract: memberContract
       };
-      const request: ChannelServiceRequest<FullIdentity, ChannelAcceptDetails> = {
+      const request: ChannelServiceRequest<SignedKeyIdentity, ChannelAcceptDetails> = {
         identity: client.signedIdentity,
         type: 'accept',
         details: details
@@ -425,7 +431,7 @@ export class ClientTester {
       const details: ChannelGetDetails = {
         channel: channel
       };
-      const request: ChannelServiceRequest<AddressIdentity, ChannelGetDetails> = {
+      const request: ChannelServiceRequest<SignedAddressIdentity, ChannelGetDetails> = {
         type: 'get',
         identity: client.signedAddress,
         details: details
@@ -452,9 +458,9 @@ export class ClientTester {
   private async listChannels(client: TestClient): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       const details: ChannelsListDetails = {};
-      const request: ChannelServiceRequest<KeyIdentity, ChannelsListDetails> = {
+      const request: ChannelServiceRequest<SignedAddressIdentity, ChannelsListDetails> = {
         type: 'list',
-        identity: client.signedIdentity,
+        identity: client.signedAddress,
         details: details
       };
       const args: PostArgs = {
@@ -491,7 +497,6 @@ export class ClientTester {
   private leaveChannel(client: TestClient, permanently: boolean): Promise<void> {
     const details: LeaveRequestDetails = {
       channelAddress: client.channelResponse.channelAddress,
-      memberAddress: client.signedIdentity.info.address,
       permanently: permanently
     };
     const requestId = client.requestIndex.toString();
@@ -515,7 +520,7 @@ export class ClientTester {
       const details: ChannelDeleteDetails = {
         channel: client.channelResponse.channelAddress
       };
-      const request: ChannelServiceRequest<AddressIdentity, ChannelDeleteDetails> = {
+      const request: ChannelServiceRequest<SignedAddressIdentity, ChannelDeleteDetails> = {
         type: 'delete',
         identity: client.signedAddress,
         details: details

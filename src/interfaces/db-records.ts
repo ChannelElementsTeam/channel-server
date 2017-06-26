@@ -1,5 +1,5 @@
 
-import { ChannelContractDetails, MemberContractDetails, SignedIdentity, FullIdentity } from "channels-common";
+import { ChannelContractDetails, MemberContractDetails, FullIdentity, SignedKeyIdentity } from "channels-common";
 
 export interface UserRecord {
   id: string;
@@ -22,7 +22,8 @@ export interface ChannelRecord {
 
 export interface ChannelMemberRecord {
   channelAddress: string;
-  identity: SignedIdentity<FullIdentity>;
+  signedIdentity: SignedKeyIdentity;
+  identity: FullIdentity;
   memberServices: MemberContractDetails;
   added: number;
   status: string;

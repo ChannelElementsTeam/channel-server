@@ -2,7 +2,7 @@ import { Cursor, MongoClient, Db, Collection } from "mongodb";
 
 import { ChannelRecord, ChannelMemberRecord, UserRecord, ChannelInvitation, MessageRecord } from "./interfaces/db-records";
 import { configuration } from "./configuration";
-import { ChannelContractDetails, SignedIdentity, FullIdentity, MemberContractDetails } from "channels-common";
+import { ChannelContractDetails, FullIdentity, MemberContractDetails, SignedKeyIdentity } from "channels-common";
 
 export class Database {
   private db: Db;
@@ -32,9 +32,9 @@ export class Database {
 
   private async initializeChannelMembers(): Promise<void> {
     this.channelMembers = this.db.collection('channelMembers');
-    await this.channelMembers.createIndex({ channelAddress: 1, "identity.info.address": 1 }, { unique: true });
+    await this.channelMembers.createIndex({ channelAddress: 1, "identity.address": 1 }, { unique: true });
     await this.channelMembers.createIndex({ channelAddress: 1, status: 1, lastActive: -1 });
-    await this.channelMembers.createIndex({ "identity.info.address": 1, status: 1, lastActive: -1 });
+    await this.channelMembers.createIndex({ "identity.address": 1, status: 1, lastActive: -1 });
   }
 
   private async initializeInvitations(): Promise<void> {
@@ -76,10 +76,11 @@ export class Database {
     await this.channels.update({ channelAddress: channelAddress }, { $set: { status: status, lastUpdated: Date.now() } });
   }
 
-  async insertChannelMember(channelAddress: string, identity: SignedIdentity<FullIdentity>, memberServicesContract: MemberContractDetails, status: string): Promise<ChannelMemberRecord> {
+  async insertChannelMember(channelAddress: string, signedIdentity: SignedKeyIdentity, identity: FullIdentity, memberServicesContract: MemberContractDetails, status: string): Promise<ChannelMemberRecord> {
     const now = Date.now();
     const record: ChannelMemberRecord = {
       channelAddress: channelAddress,
+      signedIdentity: signedIdentity,
       identity: identity,
       memberServices: memberServicesContract,
       added: now,
@@ -91,7 +92,7 @@ export class Database {
   }
 
   async findChannelMember(channelAddress: string, memberAddress: string): Promise<ChannelMemberRecord> {
-    return await this.channelMembers.findOne<ChannelMemberRecord>({ channelAddress: channelAddress, "identity.info.address": memberAddress });
+    return await this.channelMembers.findOne<ChannelMemberRecord>({ channelAddress: channelAddress, "identity.address": memberAddress });
   }
 
   async updateChannelMemberActive(channelAddress: string, memberAddress: string, status: string, lastActive: number, identity?: any): Promise<void> {
@@ -105,7 +106,7 @@ export class Database {
     if (identity) {
       update.identity = identity;
     }
-    await this.channelMembers.update({ channelAddress: channelAddress, "identity.info.address": memberAddress }, { $set: update });
+    await this.channelMembers.update({ channelAddress: channelAddress, "identity.address": memberAddress }, { $set: update });
   }
 
   async countChannelMembers(channelAddress: string, status: string): Promise<number> {
@@ -118,7 +119,7 @@ export class Database {
 
   async countChannelMembersByAddress(address: string, status: string, lastActiveBefore = 0): Promise<number> {
     const query: any = {
-      "identity.info.address": address,
+      "identity.address": address,
       status: status,
     };
     if (lastActiveBefore) {
@@ -130,7 +131,7 @@ export class Database {
   async findChannelMemberByChannelAndAddress(channelAddress: string, memberAddress: string, status: string): Promise<ChannelMemberRecord> {
     const query: any = {
       channelAddress: channelAddress,
-      "identity.info.address": memberAddress,
+      "identity.address": memberAddress,
       status: status,
     };
     return await this.channelMembers.findOne<ChannelMemberRecord>(query);
@@ -138,13 +139,25 @@ export class Database {
 
   async findChannelMembersByAddress(address: string, status: string, lastActiveBefore = 0, limit = 50): Promise<ChannelMemberRecord[]> {
     const query: any = {
-      "identity.info.address": address,
+      "identity.address": address,
       status: status,
     };
     if (lastActiveBefore) {
       query.lastActive = { $lte: lastActiveBefore };
     }
     return await this.channelMembers.find<ChannelMemberRecord>(query).sort({ lastActive: -1 }).limit(limit).toArray();
+  }
+  async getLatestChannelMemberRecord(address: string, status: string): Promise<ChannelMemberRecord> {
+    const query: any = {
+      "identity.address": address,
+      status: status,
+    };
+    const items = await this.channelMembers.find<ChannelMemberRecord>(query).sort({ lastActive: -1 }).limit(1).toArray();
+    if (items.length > 0) {
+      return items[0];
+    } else {
+      return null;
+    }
   }
 
   async insertInvitation(id: string, sharedByAddress: string, channelAddress: string, extensions: any): Promise<ChannelInvitation> {
