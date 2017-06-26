@@ -15,11 +15,13 @@ import { UserRecord, ChannelMemberRecord, ChannelRecord, MessageRecord, ChannelI
 import { Utils } from "./utils";
 import { configuration } from "./configuration";
 
-import { ChannelDeletedNotificationDetails, PingRequestDetails, ControlChannelMessage, ErrorDetails, HistoryMessageDetails, HistoryRequestDetails, HistoryResponseDetails, LeaveRequestDetails,
+import {
+  ChannelDeletedNotificationDetails, PingRequestDetails, ControlChannelMessage, ErrorDetails, HistoryMessageDetails, HistoryRequestDetails, HistoryResponseDetails, LeaveRequestDetails,
   JoinNotificationDetails, ChannelParticipantInfo, JoinResponseDetails, JoinRequestDetails, LeaveNotificationDetails, ChannelMessageUtils, ChannelMessage, ChannelContractDetails, ChannelOptions,
   BasicChannelInformation, ChannelInformation, ChannelMemberInfo, MemberContractDetails, ProviderServiceEndpoints, ChannelServiceRequest, ChannelCreateDetails, ChannelShareDetails, ChannelGetDetails,
   ChannelAcceptDetails, ChannelsListDetails, ChannelDeleteDetails, ChannelShareCodeResponse, CHANNELS_PROTOCOL, ChannelShareResponse, ChannelDeleteResponse, ChannelsListResponse, ChannelServiceDescription,
-  AddressIdentity, ChannelIdentityUtils, FullIdentity, KeyIdentity, SignedIdentity } from "channels-common";
+  AddressIdentity, ChannelIdentityUtils, FullIdentity, KeyIdentity, SignedIdentity
+} from "channels-common";
 
 const TOKEN_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const MAX_HISTORY_BUFFERED_SIZE = 50000;
@@ -172,7 +174,7 @@ export class ChannelServer implements TransportEventHandler {
     if (!this.validateMemberContract(createRequest.details.memberContract, response)) {
       return;
     }
-    this.createChannel(createRequest.identity, createRequest.details, request, response);
+    await this.createChannel(createRequest.identity, createRequest.details, request, response);
   }
 
   private async handleShareRequest(request: Request, response: Response): Promise<void> {
