@@ -1,11 +1,12 @@
 import { MemberContractDetails, ChannelContractDetails, ChannelInformation, BasicChannelInformation } from "./channel-service-channel";
 import { HasPublicKey, HasExtendedIdentity, AddressIdentity, SignedIdentity, Signable } from "./channel-service-identity";
 
-export const CHANNELS_PROTOCOL_VERSION = '0.2.0';
+export const CHANNELS_PROTOCOL = "https://channelelements.com/protocols/client-server/0.2.0";
 // ----------------------------------------------------------------------------
 // JSON response to /channel-elements.json
 // ----------------------------------------------------------------------------
 export interface ChannelServiceDescription extends HasProtocolVersion, HasServiceEndpoints, HasExtensions {
+  protocol: string;
   provider: {
     name: string;
     logo: string;
@@ -104,7 +105,7 @@ export interface HasChannel {
 }
 
 export interface HasProtocolVersion {
-  protocolVersion: string;  // e.g., "1.0.0":  conforms to which version of the specification
+  protocol: string;  // e.g., "1.0.0":  conforms to which version of the specification
 }
 
 export interface HasServiceEndpoints {

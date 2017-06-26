@@ -38,6 +38,8 @@ export interface LeaveRequestDetails {
   permanently?: boolean;
 }
 
+// type = 'send-wakeup'
+
 // type = 'history'
 export interface HistoryRequestDetails {
   channelAddress: string;

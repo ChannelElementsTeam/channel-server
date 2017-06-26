@@ -8,15 +8,6 @@ const KeyEncoder = require('key-encoder');
 
 const MAX_VERIFY_CLOCK_SKEW = 1000 * 60 * 15;
 
-export interface Signed<T extends Signable> {
-  info: T;
-  signature: string;
-}
-
-export interface Signable {
-  signedAt: number;
-}
-
 export class ChannelIdentityUtils {
 
   static generatePrivateKey(): Uint8Array {
@@ -175,4 +166,13 @@ export interface HasPublicKey {
 
 export interface HasAddress {
   address: string;
+}
+
+export interface Signed<T extends Signable> {
+  info: T;
+  signature: string;
+}
+
+export interface Signable {
+  signedAt: number;
 }

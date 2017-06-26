@@ -16,7 +16,7 @@ import { Utils } from "./utils";
 import { ChannelDeletedNotificationDetails, PingRequestDetails, ControlChannelMessage, ErrorDetails, HistoryMessageDetails, HistoryRequestDetails, HistoryResponseDetails, LeaveRequestDetails, JoinNotificationDetails, ChannelParticipantInfo, JoinResponseDetails, JoinRequestDetails, LeaveNotificationDetails } from "./common/channel-service-control";
 import { ChannelMessageUtils, ChannelMessage } from "./common/channel-message-utils";
 import { ChannelContractDetails, ChannelOptions, BasicChannelInformation, ChannelInformation, ChannelMemberInfo, MemberContractDetails } from "./common/channel-service-channel";
-import { ProviderServiceEndpoints, ChannelServiceRequest, ChannelCreateDetails, ChannelShareDetails, ChannelGetDetails, ChannelAcceptDetails, ChannelsListDetails, ChannelDeleteDetails, ChannelShareCodeResponse, CHANNELS_PROTOCOL_VERSION, ChannelShareResponse, ChannelDeleteResponse, ChannelsListResponse, ChannelServiceDescription } from "./common/channel-service-rest";
+import { ProviderServiceEndpoints, ChannelServiceRequest, ChannelCreateDetails, ChannelShareDetails, ChannelGetDetails, ChannelAcceptDetails, ChannelsListDetails, ChannelDeleteDetails, ChannelShareCodeResponse, CHANNELS_PROTOCOL, ChannelShareResponse, ChannelDeleteResponse, ChannelsListResponse, ChannelServiceDescription } from "./common/channel-service-rest";
 import { AddressIdentity, ChannelIdentityUtils, FullIdentity, KeyIdentity, SignedIdentity } from "./common/channel-service-identity";
 import { configuration } from "./configuration";
 
@@ -91,7 +91,7 @@ export class ChannelServer implements TransportEventHandler {
   private async handleProviderRequest(request: Request, response: Response): Promise<void> {
     console.log("ChannelServer.handleProviderRequest");
     const reply: ChannelServiceDescription = {
-      protocolVersion: "0.1.0",
+      protocol: CHANNELS_PROTOCOL,
       provider: {
         name: "Channel Elements",
         logo: url.resolve(configuration.get('baseClientUri'), '/s/logo.png'),
@@ -477,7 +477,7 @@ export class ChannelServer implements TransportEventHandler {
       }
       const channelInfo = await this.getBasicChannelInfo(channelRecord);
       const reply: ChannelShareCodeResponse = {
-        protocolVersion: CHANNELS_PROTOCOL_VERSION,
+        protocol: CHANNELS_PROTOCOL,
         serviceEndpoints: this.getServicesList(),
         invitationId: invitation.id,
         channelInfo: channelInfo,
