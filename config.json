@@ -38,8 +38,8 @@
     "disabled": false,
     "phoneNumber": "+16505551212",
     "twilio": {
-      "accountSid": "ACf11aaee5611d7fa21620985c7bacdd99",
-      "authToken": "20b69923538634ef9299c280b9970bd1",
+      "accountSid": "***",
+      "authToken": "***",
       "skipValidation": true
     }
   }
