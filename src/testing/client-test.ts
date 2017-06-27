@@ -230,7 +230,7 @@ export class ClientTester {
       }
     };
     const memberContract: MemberContractDetails = {
-      notificationType: 'none'
+      subscribe: false
     };
     const details: ChannelCreateDetails = {
       channelContract: contract,
@@ -396,7 +396,7 @@ export class ClientTester {
   private async accept(client: TestClient, name: string): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       const memberContract: MemberContractDetails = {
-        notificationType: 'none'
+        subscribe: false
       };
       const details: ChannelAcceptDetails = {
         invitationId: client.shareCodeResponse.invitationId,

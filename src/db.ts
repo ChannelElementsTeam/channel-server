@@ -1,8 +1,9 @@
 import { Cursor, MongoClient, Db, Collection } from "mongodb";
 
-import { ChannelRecord, ChannelMemberRecord, UserRecord, ChannelInvitation, MessageRecord } from "./interfaces/db-records";
+import { ChannelRecord, ChannelMemberRecord, ChannelInvitation, MessageRecord, RegistrationRecord, SmsBlockRecord } from "./interfaces/db-records";
 import { configuration } from "./configuration";
-import { ChannelContractDetails, FullIdentity, MemberContractDetails, SignedKeyIdentity } from "channels-common";
+import { ChannelContractDetails, FullIdentity, MemberContractDetails, SignedKeyIdentity, NotificationSettings } from "channels-common";
+import { KeyIdentity } from "./common/channel-service-identity";
 
 export class Database {
   private db: Db;
@@ -10,6 +11,8 @@ export class Database {
   private channelMembers: Collection;
   private invitations: Collection;
   private messages: Collection;
+  private registrations: Collection;
+  private smsBlocks: Collection;
 
   async initialize(): Promise<void> {
     const serverOptions = configuration.get('mongo.serverOptions');
@@ -22,6 +25,8 @@ export class Database {
     await this.initializeChannelMembers();
     await this.initializeInvitations();
     await this.initializeMessages();
+    await this.initializeRegistrations();
+    await this.initializeSmsBlocks();
   }
 
   private async initializeChannels(): Promise<void> {
@@ -35,6 +40,7 @@ export class Database {
     await this.channelMembers.createIndex({ channelAddress: 1, "identity.address": 1 }, { unique: true });
     await this.channelMembers.createIndex({ channelAddress: 1, status: 1, lastActive: -1 });
     await this.channelMembers.createIndex({ "identity.address": 1, status: 1, lastActive: -1 });
+    await this.channelMembers.createIndex({ channelAddress: 1, status: 1, lastNotificationConsidered: 1 });
   }
 
   private async initializeInvitations(): Promise<void> {
@@ -48,7 +54,18 @@ export class Database {
     await this.messages.createIndex({ channelAddress: 1, timestamp: -1 });
   }
 
-  async insertChannel(channelAddress: string, creatorAddress: string, transportUrl: string, contract: ChannelContractDetails, status: string): Promise<ChannelRecord> {
+  private async initializeRegistrations(): Promise<void> {
+    this.registrations = this.db.collection('registrations');
+    await this.registrations.createIndex({ address: 1 }, { unique: true });
+    await this.registrations.createIndex({ address: 1, status: 1, lastActive: -1 });
+  }
+
+  private async initializeSmsBlocks(): Promise<void> {
+    this.smsBlocks = this.db.collection('smsBlocks');
+    await this.smsBlocks.createIndex({ smsNumber: 1 }, { unique: true });
+  }
+
+  async insertChannel(channelAddress: string, name: string, creatorAddress: string, transportUrl: string, contract: ChannelContractDetails, status: string): Promise<ChannelRecord> {
     const now = Date.now();
     const record: ChannelRecord = {
       channelAddress: channelAddress,
@@ -60,6 +77,9 @@ export class Database {
       contract: contract,
       status: status
     };
+    if (name) {
+      record.name = name;
+    }
     await this.channels.insert(record);
     return record;
   }
@@ -85,7 +105,9 @@ export class Database {
       memberServices: memberServicesContract,
       added: now,
       status: status,
-      lastActive: now
+      lastActive: now,
+      lastNotificationConsidered: now,
+      lastNotificationSent: 0
     };
     await this.channelMembers.insert(record);
     return record;
@@ -160,6 +182,29 @@ export class Database {
     }
   }
 
+  async findChannelMembersBeforeLastConsideredAndUpdate(channelAddress: string, status: string, lastNotificationConsideredBefore: number): Promise<ChannelMemberRecord[]> {
+    const result = await this.channelMembers.find<ChannelMemberRecord>({
+      channelAddress: channelAddress,
+      status: status,
+      lastNotificationConsidered: { $lte: lastNotificationConsideredBefore }
+    }).toArray();
+    if (result.length > 0) {
+      await this.channelMembers.update({
+        channelAddress: channelAddress,
+        status: status,
+        lastNotificationConsidered: { $lte: lastNotificationConsideredBefore }
+      }, { $set: { lastNotificationConsideredBefore: Date.now() } });
+    }
+    return result;
+  }
+
+  async updateChannelMemberLastNotification(channelAddress: string, memberAddress: string): Promise<void> {
+    await this.channelMembers.update({
+      channelAddress: channelAddress,
+      "identity.address": memberAddress
+    }, { $set: { lastNotificationSent: Date.now() } });
+  }
+
   async insertInvitation(id: string, sharedByAddress: string, channelAddress: string, extensions: any): Promise<ChannelInvitation> {
     const now = Date.now();
     const record: ChannelInvitation = {
@@ -223,6 +268,76 @@ export class Database {
     return await this.messages.count(query);
   }
 
+  async insertRegistration(address: string, signedIdentity: SignedKeyIdentity, identity: KeyIdentity, lastActive: number, created: number, status: string, timezone?: string, notifications?: NotificationSettings): Promise<RegistrationRecord> {
+    const now = Date.now();
+    const record: RegistrationRecord = {
+      address: address,
+      signedIdentity: signedIdentity,
+      identity: identity,
+      lastActive: lastActive,
+      created: created,
+      status: status,
+      lastNotification: 0,
+      lastSmsNotification: 0
+    };
+    if (timezone) {
+      record.timezone = timezone;
+    }
+    if (notifications) {
+      record.notifications = notifications;
+    }
+    await this.registrations.insert(record);
+    return record;
+  }
+
+  async findRegistration(address: string): Promise<RegistrationRecord> {
+    return await this.registrations.findOne<RegistrationRecord>({ address: address });
+  }
+
+  async updateRegistrationSettings(registration: RegistrationRecord, timezone?: string, notifications?: NotificationSettings): Promise<void> {
+    if (!timezone && !notifications) {
+      return;
+    }
+    const update: any = {};
+    if (timezone) {
+      update.timezone = timezone;
+      registration.timezone = timezone;
+    }
+    if (notifications) {
+      update.notifications = notifications;
+      registration.notifications = notifications;
+    }
+    await this.registrations.update({ address: registration.address }, { $set: update });
+  }
+
+  async updateRegistrationLastActive(address: string): Promise<void> {
+    await this.registrations.update({ address: address }, { $set: { lastActive: Date.now() } });
+  }
+
+  async updateRegistrationStatus(address: string, status: string): Promise<void> {
+    await this.registrations.update({ address: address }, { $set: { status: status } });
+  }
+
+  async updateRegistrationLastNotificationSent(address: string): Promise<void> {
+    const now = Date.now();
+    await this.channelMembers.update({
+      address: address
+    }, { $set: { lastSmsNotification: now, lastNotification: now } });
+  }
+
+  async upsertSmsBlock(smsNumber: string, blocked: boolean, at: number): Promise<SmsBlockRecord> {
+    const record: SmsBlockRecord = {
+      smsNumber: smsNumber,
+      blocked: blocked,
+      at: at
+    };
+    await this.smsBlocks.update({ smsNumber: smsNumber }, record, { upsert: true });
+    return record;
+  }
+
+  async findSmsBlockByNumber(smsNumber: string): Promise<SmsBlockRecord> {
+    return await this.smsBlocks.findOne<SmsBlockRecord>({ smsNumber: smsNumber });
+  }
 }
 
 const db = new Database();

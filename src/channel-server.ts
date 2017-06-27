@@ -10,7 +10,7 @@ import { TextDecoder, TextEncoder } from 'text-encoding';
 
 import { TransportServer, TransportEventHandler, MessageHandlingDirective, ControlMessageDirective } from './transport-server';
 import { db } from "./db";
-import { UserRecord, ChannelMemberRecord, ChannelRecord, MessageRecord, ChannelInvitation } from './interfaces/db-records';
+import { ChannelMemberRecord, ChannelRecord, MessageRecord, ChannelInvitation, RegistrationRecord, SmsBlockRecord } from './interfaces/db-records';
 import { Utils } from "./utils";
 import { configuration } from "./configuration";
 
@@ -19,15 +19,19 @@ import {
   JoinNotificationDetails, ChannelParticipantInfo, JoinResponseDetails, JoinRequestDetails, LeaveNotificationDetails, ChannelMessageUtils, ChannelMessage, ChannelContractDetails, ChannelOptions,
   BasicChannelInformation, ChannelInformation, ChannelMemberInfo, MemberContractDetails, ProviderServiceEndpoints, ChannelServiceRequest, ChannelCreateDetails, ChannelShareDetails, ChannelGetDetails,
   ChannelAcceptDetails, ChannelsListDetails, ChannelDeleteDetails, ChannelShareCodeResponse, CHANNELS_PROTOCOL, ChannelShareResponse, ChannelDeleteResponse, ChannelsListResponse, ChannelServiceDescription,
-  AddressIdentity, ChannelIdentityUtils, FullIdentity, KeyIdentity, SignedAddressIdentity, SignedKeyIdentity, ChannelParticipantIdentity
+  AddressIdentity, ChannelIdentityUtils, FullIdentity, KeyIdentity, SignedAddressIdentity, SignedKeyIdentity, ChannelParticipantIdentity, GetRegistrationDetails, GetRegistrationResponse, UpdateRegistrationDetails, NotificationSettings, NotificationTiming
 } from "channels-common";
+import { smsManager, SmsInboundMessageHandler } from "./sms-manager";
 
 const TOKEN_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const MAX_HISTORY_BUFFERED_SIZE = 50000;
 const MAX_FULL_IDENTITY_CLOCK_SKEW = 1000 * 60 * 5;
 const DYNAMIC_BASE = '/d';
+const MINIMUM_NOTIFICATION_CONSIDER_INTERVAL = 1000 * 60 * 5;
+const MINIMUM_CHANNEL_NOTIFICATION_ACTIVE_INTERVAL = 1000 * 60 * 10;
+const MINIMUM_CHANNEL_NOTIFICATION_INACTIVE_INTERVAL = 1000 * 60 * 60;
 
-export class ChannelServer implements TransportEventHandler {
+export class ChannelServer implements TransportEventHandler, SmsInboundMessageHandler {
   private providerUrl: string;
   private homeUrl: string;
   private restBaseUrl: string;
@@ -66,7 +70,9 @@ export class ChannelServer implements TransportEventHandler {
     this.app.set('view engine', 'handlebars');
   }
 
-  start(): void {
+  async start(): Promise<void> {
+    await smsManager.initialize(this.app);
+    smsManager.setHandler(this);
     this.transport.start();
     if (this.pingInterval > 0) {
       setInterval(() => {
@@ -155,10 +161,31 @@ export class ChannelServer implements TransportEventHandler {
       case 'list':
         await this.handleListRequest(request, response);
         break;
+      case 'get-registration':
+        await this.handleGetRegistration(request, response);
+        break;
+      case 'update-registration':
+        await this.handleUpdateRegistration(request, response);
+        break;
       default:
         response.status(400).send("Invalid request type");
         break;
     }
+  }
+
+  private async ensureRegistration(address: string, signedIdentity: SignedKeyIdentity, identity: KeyIdentity): Promise<void> {
+    const registration = await db.findRegistration(address);
+    const now = Date.now();
+    if (registration) {
+      if (registration.status !== 'active') {
+        await db.updateRegistrationStatus(address, 'active');
+      }
+    } else {
+      await db.insertRegistration(address, signedIdentity, identity, now, now, 'active');
+    }
+  }
+  private async updateLastActive(address: string): Promise<void> {
+    await db.updateRegistrationLastActive(address);
   }
 
   private async handleCreateRequest(request: Request, response: Response): Promise<void> {
@@ -178,6 +205,8 @@ export class ChannelServer implements TransportEventHandler {
     if (!this.validateMemberContract(createRequest.details.memberContract, response)) {
       return;
     }
+    await this.ensureRegistration(fullIdentity.address, createRequest.identity, fullIdentity);
+    await this.updateLastActive(fullIdentity.address);
     await this.createChannel(createRequest.identity, fullIdentity, createRequest.details, request, response);
   }
 
@@ -193,6 +222,7 @@ export class ChannelServer implements TransportEventHandler {
       return;
     }
     const channelRecord = await this.getChannelRecord(channelMemberRecord.channelAddress);
+    await this.updateLastActive(channelMemberRecord.identity.address);
     await this.shareChannel(channelRecord, channelMemberRecord, shareRequest.details, request, response);
   }
 
@@ -208,6 +238,7 @@ export class ChannelServer implements TransportEventHandler {
       return;
     }
     const channelRecord = await this.getChannelRecord(getRequest.details.channel);
+    await this.updateLastActive(channelMemberRecord.identity.address);
     await this.getChannel(channelRecord, channelMemberRecord, request, response);
   }
   private async handleAcceptRequest(request: Request, response: Response): Promise<void> {
@@ -234,6 +265,8 @@ export class ChannelServer implements TransportEventHandler {
       response.status(409).send("You are already a member of this channel");
       return;
     }
+    await this.ensureRegistration(fullIdentity.address, acceptRequest.identity, fullIdentity);
+    await this.updateLastActive(fullIdentity.address);
     await this.acceptInvitation(acceptRequest.identity, fullIdentity, invitation, channelRecord, acceptRequest.details, request, response);
   }
   private async handleDeleteRequest(request: Request, response: Response): Promise<void> {
@@ -253,6 +286,7 @@ export class ChannelServer implements TransportEventHandler {
       response.status(403).send("Only channel creator can delete");
       return;
     }
+    await this.updateLastActive(channelMemberRecord.identity.address);
     await this.deleteChannel(channelRecord, channelMemberRecord, request, response);
   }
 
@@ -268,7 +302,79 @@ export class ChannelServer implements TransportEventHandler {
     if (!identity) {
       return;
     }
+    await this.updateLastActive(channelMemberRecord.identity.address);
     await this.listChannels(identity, listRequest.details, request, response);
+  }
+
+  private async handleGetRegistration(request: Request, response: Response): Promise<void> {
+    console.log("ChannelServer.handleGetRegistration");
+    const getRegistrationRequest = request.body as ChannelServiceRequest<SignedKeyIdentity, GetRegistrationDetails>;
+    const identity = this.validateKeyIdentity(getRegistrationRequest.identity, response);
+    if (!identity) {
+      return;
+    }
+    const registration = await db.findRegistration(identity.address);
+    if (!registration || registration.status !== 'active') {
+      response.status(404).send("No matching address registered");
+      return;
+    }
+    await this.updateLastActive(identity.address);
+    await this.completeGetRegistration(registration, request, response);
+  }
+
+  private async completeGetRegistration(registration: RegistrationRecord, request: Request, response: Response): Promise<void> {
+    const reply: GetRegistrationResponse = {};
+    if (registration.timezone) {
+      reply.timezone = registration.timezone;
+    }
+    if (registration.notifications) {
+      reply.notifications = registration.notifications;
+    }
+    response.json(reply);
+  }
+  private async handleUpdateRegistration(request: Request, response: Response): Promise<void> {
+    console.log("ChannelServer.handleUpdateRegistration");
+    const updateRegistrationRequest = request.body as ChannelServiceRequest<SignedKeyIdentity, UpdateRegistrationDetails>;
+    if (!updateRegistrationRequest || !updateRegistrationRequest.identity || !updateRegistrationRequest.details) {
+      response.status(400).send("Missing or invalid update request");
+      return;
+    }
+    const identity = this.validateKeyIdentity(updateRegistrationRequest.identity, response);
+    if (!identity) {
+      return;
+    }
+    const registration = await db.findRegistration(identity.address);
+    let settings: NotificationSettings = {};
+    if (registration && registration.notifications) {
+      settings = registration.notifications;
+    }
+    if (updateRegistrationRequest.details && updateRegistrationRequest.details.notificationsUpdate) {
+      if (updateRegistrationRequest.details.notificationsUpdate.minimumSmsIntervalMinutes) {
+        settings.minimumSmsIntervalMinutes = updateRegistrationRequest.details.notificationsUpdate.minimumSmsIntervalMinutes;
+      }
+      if (updateRegistrationRequest.details.notificationsUpdate.minimumWebPushIntervalMinutes) {
+        settings.minimumWebPushIntervalMinutes = updateRegistrationRequest.details.notificationsUpdate.minimumWebPushIntervalMinutes;
+      }
+      if (updateRegistrationRequest.details.notificationsUpdate.smsNumber) {
+        settings.smsNumber = updateRegistrationRequest.details.notificationsUpdate.smsNumber;
+      }
+      if (typeof updateRegistrationRequest.details.notificationsUpdate.suspended === 'boolean') {
+        settings.suspended = updateRegistrationRequest.details.notificationsUpdate.suspended;
+      }
+      if (updateRegistrationRequest.details.notificationsUpdate.timing) {
+        settings.timing = updateRegistrationRequest.details.notificationsUpdate.timing;
+      }
+      if (updateRegistrationRequest.details.notificationsUpdate.webPushNotifications) {
+        settings.webPushNotifications = updateRegistrationRequest.details.notificationsUpdate.webPushNotifications;
+      }
+    }
+    if (registration) {
+      await db.updateRegistrationSettings(registration, updateRegistrationRequest.details.timezone, settings);
+    } else {
+      await db.insertRegistration(identity.address, updateRegistrationRequest.identity, identity, 0, Date.now(), 'active', updateRegistrationRequest.details.timezone, settings);
+    }
+    await this.updateLastActive(identity.address);
+    await this.completeGetRegistration(registration, request, response);
   }
 
   private validateFullIdentity(signedIdentity: SignedKeyIdentity, response: Response): FullIdentity {
@@ -339,7 +445,7 @@ export class ChannelServer implements TransportEventHandler {
   }
 
   private async validateMemberContract(memberContract: MemberContractDetails, response: Response): Promise<boolean> {
-    if (!memberContract || !memberContract.notificationType) {
+    if (!memberContract) {
       response.status(400).send("Invalid member contract");
       return false;
     }
@@ -352,13 +458,14 @@ export class ChannelServer implements TransportEventHandler {
     // that REST requests that need to be handled by the server doing the transport arrive on the correct server.
     const channelAddress = ChannelIdentityUtils.generateValidAddress();
     this.fillAllOptions(details.channelContract.serviceContract.options);
-    const channelRecord = await db.insertChannel(channelAddress, identity.address, this.transportUrl, details.channelContract, 'active');
+    const channelRecord = await db.insertChannel(channelAddress, details.name, identity.address, this.transportUrl, details.channelContract, 'active');
     const now = Date.now();
     const channelInfo: ChannelInfo = {
       code: this.allocateChannelCode(),
       channelAddress: channelRecord.channelAddress,
       memberAddress: identity.address,
       participantsByCode: {},
+      participantsByAddress: {},
       lastAllocatedCode: 0,
       contract: channelRecord.contract,
       creatorAddress: identity.address
@@ -579,6 +686,7 @@ export class ChannelServer implements TransportEventHandler {
 
   private async handleParticipantLeft(channel: ChannelInfo, participant: ParticipantInfo, socket: SocketInfo, permanently: boolean): Promise<number> {
     delete channel.participantsByCode[participant.code];
+    delete channel.participantsByAddress[participant.memberIdentity.address];
     let count = 0;
     if (channel.contract.serviceContract.options.topology === 'many-to-many') {
       for (const code of Object.keys(channel.participantsByCode)) {
@@ -660,7 +768,82 @@ export class ChannelServer implements TransportEventHandler {
       }
     }
     console.log("ChannelServer: Forwarding channel message to " + result.forwardMessageToSockets.length + " sockets", socket.socketId, channelAddress);
+    if (!messageInfo.priority) {
+      // Don't consider notifications for real-time (media) messages
+      await this.considerNotifications(channelInfo, participant);
+    }
     return result;
+  }
+
+  private async considerNotifications(channelInfo: ChannelInfo, participant: ParticipantInfo): Promise<void> {
+    const now = Date.now();
+    const members = await db.findChannelMembersBeforeLastConsideredAndUpdate(channelInfo.channelAddress, 'active', now - MINIMUM_NOTIFICATION_CONSIDER_INTERVAL);
+    for (const member of members) {
+      // ignore active participants
+      if (channelInfo.participantsByAddress[member.identity.address]) {
+        continue;
+      }
+      const channelMemberRecord = await db.findChannelMemberByChannelAndAddress(channelInfo.channelAddress, member.identity.address, 'active');
+      if (!channelMemberRecord) {
+        continue;
+      }
+      // if not subscribed, then a notification is not relevant
+      if (!channelMemberRecord.memberServices || !channelMemberRecord.memberServices.subscribe) {
+        continue;
+      }
+      const registration = await db.findRegistration(channelMemberRecord.identity.address);
+      if (!registration) {
+        continue;
+      }
+      if (!registration.notifications || !registration.notifications.suspended) {
+        continue;
+      }
+      if (!registration.notifications.smsNumber) {
+        continue;
+      }
+      const smsBlock = await db.findSmsBlockByNumber(registration.notifications.smsNumber);
+      if (smsBlock && smsBlock.blocked) {
+        continue;
+      }
+      if (now - registration.lastSmsNotification < registration.notifications.minimumSmsIntervalMinutes * 60 * 1000) {
+        continue;
+      }
+      if (this.isBlackedOut(registration.notifications.timing, registration.timezone)) {
+        continue;
+      }
+      // We'll choose the minimum interval depending on whether they became active after I last sent a notification
+      // suggesting that they are interested, and therefore a shorter interval between notifications is warranted
+      const minimumInterval = channelMemberRecord.lastNotificationSent > channelMemberRecord.lastActive ? MINIMUM_CHANNEL_NOTIFICATION_INACTIVE_INTERVAL : MINIMUM_CHANNEL_NOTIFICATION_ACTIVE_INTERVAL;
+      if (now - channelMemberRecord.lastNotificationSent < minimumInterval) {
+        continue;
+      }
+      await this.sendChannelActivityNotification(channelInfo, channelMemberRecord, registration, participant);
+    }
+  }
+
+  private isBlackedOut(timing: NotificationTiming, timezone: string): boolean {
+    // TODO
+    return false;
+  }
+
+  private async sendChannelActivityNotification(channelInfo: ChannelInfo, channelMemberRecord: ChannelMemberRecord, registration: RegistrationRecord, sender: ParticipantInfo): Promise<void> {
+    let message = '';
+    const senderName = sender.memberIdentity.name ? sender.memberIdentity.name : "Someone";
+    const channelRecord = await db.findChannelByAddress(channelInfo.channelAddress);
+    const channelName = channelRecord.name ? "channel '" + channelRecord.name + "'" : "one of your channels";
+    if (!registration.lastSmsNotification) {
+      message = "Notification from Channels:\n";
+    }
+    message += senderName + " is active on " + channelName;
+    if (registration.notifications.smsNotificationCallbackUrlTemplate) {
+      message += '\n' + registration.notifications.smsNotificationCallbackUrlTemplate.replace('{{channel}}', channelInfo.channelAddress);
+    }
+    if (!registration.lastSmsNotification) {
+      message = "\n\nSend STOP and we'll stop sending notifications.";
+    }
+    await smsManager.send(registration.notifications.smsNumber, message);
+    await db.updateRegistrationLastNotificationSent(registration.address);
+    await db.updateChannelMemberLastNotification(channelMemberRecord.channelAddress, channelMemberRecord.identity.address);
   }
 
   private async handleReceivedControlMessage(messageInfo: ChannelMessage, socket: SocketInfo): Promise<MessageHandlingDirective> {
@@ -738,6 +921,7 @@ export class ChannelServer implements TransportEventHandler {
         channelAddress: channelRecord.channelAddress,
         memberAddress: channelMemberRecord.identity.address,
         participantsByCode: {},
+        participantsByAddress: {},
         lastAllocatedCode: 0,
         contract: channelRecord.contract,
         creatorAddress: channelRecord.creatorAddress
@@ -761,6 +945,7 @@ export class ChannelServer implements TransportEventHandler {
     };
     socket.participantCodeByChannelAddress[channelRecord.channelAddress] = participant.code.toString();
     channelInfo.participantsByCode[participant.code] = participant;
+    channelInfo.participantsByAddress[participant.memberIdentity.address] = participant;
     const joinResponseDetails: JoinResponseDetails = {
       channelAddress: channelRecord.channelAddress,
       channelCode: channelInfo.code,
@@ -821,6 +1006,7 @@ export class ChannelServer implements TransportEventHandler {
         }
       }
     }
+    await this.updateLastActive(memberIdentity.address);
     console.log("ChannelServer: Completed join and notified " + notificationCount, socket.socketId, controlRequest.requestId, channelInfo.channelAddress, channelInfo.code, participant.memberIdentity.address, participant.code);
     return result;
   }
@@ -869,6 +1055,7 @@ export class ChannelServer implements TransportEventHandler {
       socketId: socket.socketId
     };
     result.deliverControlMessages.push(leaveResponseDirective);
+    await this.updateLastActive(participant.memberIdentity.address);
     console.log("ChannelServer: Completed leave and notified " + notificationCount, socket.socketId, controlRequest.requestId, channelInfo.channelAddress, channelInfo.code, participant.memberIdentity.address, participant.code);
     return result;
   }
@@ -1076,6 +1263,37 @@ export class ChannelServer implements TransportEventHandler {
     await this.transport.deliverMessage(message, socket.socketId);
     socket.lastPingSent = Date.now();
   }
+
+  async handleInboundSms(from: string, to: string, messageBody: string): Promise<string> {
+    console.log("ChannelServer.handleInboundSms", from, to, messageBody);
+    if (!messageBody) {
+      return null;
+    }
+    const entry = await db.findSmsBlockByNumber(from);
+    if (['stop', 'block'].indexOf(messageBody.toLowerCase()) >= 0) {
+      return await this.handleInboundSmsBlock(from, to, entry);
+    }
+    if (['go', 'unstop', 'unblock'].indexOf(messageBody.toLowerCase()) >= 0) {
+      return await this.handleInboundSmsUnblock(from, to, entry);
+    }
+    return null;
+  }
+
+  private async handleInboundSmsBlock(from: string, to: string, entry: SmsBlockRecord): Promise<string> {
+    if (entry && entry.blocked) {
+      return "We already have your number listed as blocked, and will not be sending any messages until you send 'unblock'.";
+    }
+    await db.upsertSmsBlock(from, true, Date.now());
+    return "Got it.  We won't send you any message until you send us 'unblock'.";
+  }
+
+  private async handleInboundSmsUnblock(from: string, to: string, entry: SmsBlockRecord): Promise<string> {
+    if (!entry || !entry.blocked) {
+      return "We do not have you listed as blocked.  So this has no effect.";
+    }
+    await db.upsertSmsBlock(from, false, Date.now());
+    return "Got it.  When we have something to notify you about, we will send you a message.";
+  }
 }
 
 interface ParticipantInfo {
@@ -1095,6 +1313,7 @@ interface ChannelInfo {
   channelAddress: string;
   memberAddress: string;
   participantsByCode: { [code: string]: ParticipantInfo };
+  participantsByAddress: { [address: string]: ParticipantInfo };
   lastAllocatedCode: number;
   contract: ChannelContractDetails;
   creatorAddress: string;

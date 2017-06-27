@@ -1,16 +1,29 @@
 
-import { ChannelContractDetails, MemberContractDetails, FullIdentity, SignedKeyIdentity } from "channels-common";
+import { ChannelContractDetails, MemberContractDetails, FullIdentity, SignedKeyIdentity, NotificationSettings } from "channels-common";
+import { KeyIdentity } from "../common/channel-service-identity";
 
-export interface UserRecord {
-  id: string;
-  token: string;
+export interface RegistrationRecord {
+  address: string;
+  signedIdentity: SignedKeyIdentity;
+  identity: KeyIdentity;
+  lastActive: number;
   created: number;
-  lastRequest: number;
   status: string;
+  timezone?: string;  // such as 'America/Los_Angeles'
+  notifications?: NotificationSettings;
+  lastSmsNotification: number;
+  lastNotification: number;
+}
+
+export interface SmsBlockRecord {
+  smsNumber: string;
+  blocked: boolean;
+  at: number;
 }
 
 export interface ChannelRecord {
   channelAddress: string;
+  name?: string;
   creatorAddress: string;
   transportUrl: string;
   created: number;
@@ -28,6 +41,8 @@ export interface ChannelMemberRecord {
   added: number;
   status: string;
   lastActive: number;
+  lastNotificationConsidered: number;
+  lastNotificationSent: number;
 }
 
 export interface ChannelInvitation {
