@@ -369,6 +369,9 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
       if (updateRegistrationRequest.details.notifications.webPushNotifications) {
         settings.webPushNotifications = updateRegistrationRequest.details.notifications.webPushNotifications;
       }
+      if (updateRegistrationRequest.details.notifications.smsNotificationCallbackUrlTemplate) {
+        settings.smsNotificationCallbackUrlTemplate = updateRegistrationRequest.details.notifications.smsNotificationCallbackUrlTemplate;
+      }
       if (typeof updateRegistrationRequest.details.notifications.minimumChannelActiveNotificationIntervalMinutes === 'number') {
         settings.minimumChannelActiveNotificationIntervalMinutes = updateRegistrationRequest.details.notifications.minimumChannelActiveNotificationIntervalMinutes;
       }
