@@ -31,6 +31,7 @@
     "mongodb": "^2.2.27",
     "node-rest-client": "^3.1.0",
     "signal-exit": "^3.0.2",
+    "text-encoding": "^0.6.4",
     "twilio": "^2.11.1",
     "uuid": "^3.0.1",
     "websocket": "^1.0.24"
@@ -45,6 +46,7 @@
     "@types/moment-timezone": "^0.2.34",
     "@types/mongodb": "^2.2.2",
     "@types/node": "^7.0.22",
+    "@types/text-encoding": "0.0.31",
     "@types/twilio": "0.0.9",
     "@types/uuid": "^3.0.0",
     "@types/websocket": "0.0.33",
