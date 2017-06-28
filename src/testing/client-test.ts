@@ -8,7 +8,7 @@ import { ChannelShareCodeResponse, ChannelShareResponse, ChannelsListResponse, C
 import { JoinResponseDetails, ControlChannelMessage, JoinRequestDetails, HistoryRequestDetails, LeaveRequestDetails } from "channels-common";
 import { ChannelMessage, ChannelMessageUtils, MessageToSerialize } from "channels-common";
 import { ChannelContractDetails, ChannelInformation, MemberContractDetails } from "channels-common";
-import { AddressIdentity, FullIdentity, ChannelIdentityUtils, KeyIdentity, SignedAddressIdentity, SignedKeyIdentity } from "channels-common";
+import { AddressIdentity, FullIdentity, ChannelIdentityUtils, KeyIdentity, SignedAddressIdentity, SignedKeyIdentity, UpdateRegistrationDetails, UpdateRegistrationResponse } from "channels-common";
 import { Utils } from "../utils";
 const RestClient = require('node-rest-client').Client;
 const basic = require('basic-authorization-header');
@@ -42,6 +42,7 @@ class TestClient {
   shareResponse?: ChannelShareResponse;
   shareCodeResponse?: ChannelShareCodeResponse;
   joinResponseDetails?: JoinResponseDetails;
+  registration?: UpdateRegistrationResponse;
   privateKey: Uint8Array;
 
   constructor(name: string) {
@@ -96,6 +97,9 @@ export class ClientTester {
     app.get('/d/test/createClientFromShare', (request: Request, response: Response) => {
       void this.handleCreateClientFromShare(request, response);
     });
+    app.get('/d/test/join', (request: Request, response: Response) => {
+      void this.handleJoin(request, response);
+    });
     app.get('/d/test/send', (request: Request, response: Response) => {
       void this.handleSend(request, response);
     });
@@ -105,11 +109,15 @@ export class ClientTester {
     app.get('/d/test/delete', (request: Request, response: Response) => {
       void this.handleDelete(request, response);
     });
+    app.get('/d/test/register', (request: Request, response: Response) => {
+      void this.handleRegister(request, response);
+    });
   }
 
   private async handleCreateClientWithChannel(request: Request, response: Response): Promise<void> {
     const id = request.query.id;
     const name = request.query.name || 'unnamed';
+    const channelName = request.query.channel;
     if (!id) {
       response.status(400).send("Missing id param");
       return;
@@ -117,12 +125,9 @@ export class ClientTester {
     const client = new TestClient(name);
     this.clientsById[id] = client;
     await this.getProvider(client);
-    await this.createChannel(client, name);
-    await this.openSocket(client);
-    await this.joinChannel(client, name);
+    await this.createChannel(client, name, channelName);
     await this.shareChannel(client, name);
     await this.listChannels(client);
-    await this.send(client, "This is just after channel creation.");
     response.end();
   }
 
@@ -142,12 +147,24 @@ export class ClientTester {
     this.clientsById[id] = client;
     await this.getShare(client, from);
     await this.accept(client, name);
-    await this.openSocket(client);
-    await this.joinChannel(client, name);
-    await this.requestHistory(client);
     await this.listChannels(client);
     response.end();
   }
+
+  private async handleJoin(request: Request, response: Response): Promise<void> {
+    const id = request.query.id;
+    const client = this.clientsById[id];
+    if (!client) {
+      response.status(404).send("No such client");
+      return;
+    }
+    await this.openSocket(client);
+    await this.joinChannel(client);
+    await this.requestHistory(client);
+    await this.send(client, "This is just after channel creation.");
+    response.end();
+  }
+
   private async handleSend(request: Request, response: Response): Promise<void> {
     const id = request.query.id;
     const text = request.query.text || 'default text';
@@ -195,6 +212,59 @@ export class ClientTester {
     response.end();
   }
 
+  private async handleRegister(request: Request, response: Response): Promise<void> {
+    const id = request.query.id;
+    const phone = request.query.phone;
+    if (!id || !phone) {
+      response.status(400).send("Missing id and/or phone param");
+      return;
+    }
+    if (!Utils.isPhoneNumber(phone)) {
+      response.status(400).send("Phone param doesn't look like a phone number");
+      return;
+    }
+    const client = this.clientsById[id];
+    if (!client) {
+      response.status(404).send("No such client");
+      return;
+    }
+    await this.register(client, Utils.cleanPhoneNumber(phone));
+    response.end();
+  }
+
+  private async register(client: TestClient, phoneNumber: string): Promise<void> {
+    const details: UpdateRegistrationDetails = {
+      timezone: 'America/Los_Angeles',
+      notifications: {
+        smsNumber: phoneNumber,
+        smsNotificationCallbackUrlTemplate: "http://localhost:31112/channel/{{channel}}"
+      }
+    };
+    const request: ChannelServiceRequest<SignedKeyIdentity, UpdateRegistrationDetails> = {
+      type: 'update-registration',
+      identity: client.signedIdentity,
+      details: details
+    };
+    const args: PostArgs = {
+      data: request,
+      headers: {
+        "Content-Type": "application/json"
+      }
+    };
+    return new Promise<void>((resolve, reject) => {
+      this.restClient.post(client.serviceEndpoints.restServiceUrl, args, (data: any, createResponse: Response) => {
+        if (createResponse.statusCode === 200) {
+          console.log("TestClient: Registration updated", JSON.stringify(data));
+          client.registration = data as UpdateRegistrationResponse;
+          resolve();
+        } else {
+          console.log("TestClient: Failed", createResponse.statusCode, new TextDecoder('utf-8').decode(data));
+          reject(createResponse.statusCode);
+        }
+      });
+    });
+  }
+
   private async getProvider(client: TestClient): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       const providerUrl = url.resolve(configuration.get('baseClientUri'), '/channel-elements.json');
@@ -214,7 +284,7 @@ export class ClientTester {
 
   }
 
-  private async createChannel(client: TestClient, name: string): Promise<void> {
+  private async createChannel(client: TestClient, name: string, channelName: string): Promise<void> {
     const contract: ChannelContractDetails = {
       package: "https://github.com/ChannelsTeam/contract-standard",
       serviceContract: {
@@ -230,12 +300,15 @@ export class ClientTester {
       }
     };
     const memberContract: MemberContractDetails = {
-      subscribe: false
+      subscribe: true
     };
     const details: ChannelCreateDetails = {
       channelContract: contract,
       memberContract: memberContract
     };
+    if (channelName) {
+      details.name = channelName;
+    }
     const request: ChannelServiceRequest<SignedKeyIdentity, ChannelCreateDetails> = {
       type: 'create',
       identity: client.signedIdentity,
@@ -249,7 +322,7 @@ export class ClientTester {
     };
     console.log("TestClient: Creating channel...");
     return new Promise<void>((resolve, reject) => {
-      this.restClient.post(client.providerResponse.serviceEndpoints.restServiceUrl, args, (data: any, createResponse: Response) => {
+      this.restClient.post(client.serviceEndpoints.restServiceUrl, args, (data: any, createResponse: Response) => {
         if (createResponse.statusCode === 200) {
           console.log("TestClient: Channel created", JSON.stringify(data));
           client.channelResponse = data as ChannelCreateResponse;
@@ -299,11 +372,11 @@ export class ClientTester {
     });
   }
 
-  private async joinChannel(client: TestClient, name: string): Promise<void> {
+  private async joinChannel(client: TestClient): Promise<void> {
     const details: JoinRequestDetails = {
       channelAddress: client.channelResponse.channelAddress,
       memberIdentity: client.signedAddress,
-      participantIdentityDetails: { name: name }
+      participantIdentityDetails: {}
     };
     const requestId = client.requestIndex.toString();
     client.requestIndex++;
@@ -396,7 +469,7 @@ export class ClientTester {
   private async accept(client: TestClient, name: string): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       const memberContract: MemberContractDetails = {
-        subscribe: false
+        subscribe: true
       };
       const details: ChannelAcceptDetails = {
         invitationId: client.shareCodeResponse.invitationId,

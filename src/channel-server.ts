@@ -348,24 +348,24 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
     if (registration && registration.notifications) {
       settings = registration.notifications;
     }
-    if (updateRegistrationRequest.details && updateRegistrationRequest.details.notificationsUpdate) {
-      if (updateRegistrationRequest.details.notificationsUpdate.minimumSmsIntervalMinutes) {
-        settings.minimumSmsIntervalMinutes = updateRegistrationRequest.details.notificationsUpdate.minimumSmsIntervalMinutes;
+    if (updateRegistrationRequest.details && updateRegistrationRequest.details.notifications) {
+      if (updateRegistrationRequest.details.notifications.minimumSmsIntervalMinutes) {
+        settings.minimumSmsIntervalMinutes = updateRegistrationRequest.details.notifications.minimumSmsIntervalMinutes;
       }
-      if (updateRegistrationRequest.details.notificationsUpdate.minimumWebPushIntervalMinutes) {
-        settings.minimumWebPushIntervalMinutes = updateRegistrationRequest.details.notificationsUpdate.minimumWebPushIntervalMinutes;
+      if (updateRegistrationRequest.details.notifications.minimumWebPushIntervalMinutes) {
+        settings.minimumWebPushIntervalMinutes = updateRegistrationRequest.details.notifications.minimumWebPushIntervalMinutes;
       }
-      if (updateRegistrationRequest.details.notificationsUpdate.smsNumber) {
-        settings.smsNumber = updateRegistrationRequest.details.notificationsUpdate.smsNumber;
+      if (updateRegistrationRequest.details.notifications.smsNumber) {
+        settings.smsNumber = updateRegistrationRequest.details.notifications.smsNumber;
       }
-      if (typeof updateRegistrationRequest.details.notificationsUpdate.suspended === 'boolean') {
-        settings.suspended = updateRegistrationRequest.details.notificationsUpdate.suspended;
+      if (typeof updateRegistrationRequest.details.notifications.suspended === 'boolean') {
+        settings.suspended = updateRegistrationRequest.details.notifications.suspended;
       }
-      if (updateRegistrationRequest.details.notificationsUpdate.timing) {
-        settings.timing = updateRegistrationRequest.details.notificationsUpdate.timing;
+      if (updateRegistrationRequest.details.notifications.timing) {
+        settings.timing = updateRegistrationRequest.details.notifications.timing;
       }
-      if (updateRegistrationRequest.details.notificationsUpdate.webPushNotifications) {
-        settings.webPushNotifications = updateRegistrationRequest.details.notificationsUpdate.webPushNotifications;
+      if (updateRegistrationRequest.details.notifications.webPushNotifications) {
+        settings.webPushNotifications = updateRegistrationRequest.details.notifications.webPushNotifications;
       }
     }
     if (registration) {
@@ -795,7 +795,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
       if (!registration) {
         continue;
       }
-      if (!registration.notifications || !registration.notifications.suspended) {
+      if (!registration.notifications || registration.notifications.suspended) {
         continue;
       }
       if (!registration.notifications.smsNumber) {
@@ -839,7 +839,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
       message += '\n' + registration.notifications.smsNotificationCallbackUrlTemplate.replace('{{channel}}', channelInfo.channelAddress);
     }
     if (!registration.lastSmsNotification) {
-      message = "\n\nSend STOP and we'll stop sending notifications.";
+      message += "\n\nSend STOP to block notifications.";
     }
     await smsManager.send(registration.notifications.smsNumber, message);
     await db.updateRegistrationLastNotificationSent(registration.address);

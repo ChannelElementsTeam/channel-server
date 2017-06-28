@@ -1,6 +1,5 @@
 
-import { ChannelContractDetails, MemberContractDetails, FullIdentity, SignedKeyIdentity, NotificationSettings } from "channels-common";
-import { KeyIdentity } from "../common/channel-service-identity";
+import { ChannelContractDetails, MemberContractDetails, FullIdentity, SignedKeyIdentity, NotificationSettings, KeyIdentity } from "channels-common";
 
 export interface RegistrationRecord {
   address: string;

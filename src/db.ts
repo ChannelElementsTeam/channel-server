@@ -2,8 +2,7 @@ import { Cursor, MongoClient, Db, Collection } from "mongodb";
 
 import { ChannelRecord, ChannelMemberRecord, ChannelInvitation, MessageRecord, RegistrationRecord, SmsBlockRecord } from "./interfaces/db-records";
 import { configuration } from "./configuration";
-import { ChannelContractDetails, FullIdentity, MemberContractDetails, SignedKeyIdentity, NotificationSettings } from "channels-common";
-import { KeyIdentity } from "./common/channel-service-identity";
+import { ChannelContractDetails, FullIdentity, MemberContractDetails, SignedKeyIdentity, NotificationSettings, KeyIdentity } from "channels-common";
 
 export class Database {
   private db: Db;
@@ -106,7 +105,7 @@ export class Database {
       added: now,
       status: status,
       lastActive: now,
-      lastNotificationConsidered: now,
+      lastNotificationConsidered: 0,
       lastNotificationSent: 0
     };
     await this.channelMembers.insert(record);
