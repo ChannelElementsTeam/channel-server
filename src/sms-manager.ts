@@ -2,6 +2,8 @@ import * as express from "express";
 import { Request, Response } from 'express';
 import twilio = require('twilio');
 import { configuration } from "./configuration";
+import * as url from 'url';
+import { Utils } from "./utils";
 
 export class SmsManager {
   private smsClient: twilio.RestClient;
@@ -10,10 +12,10 @@ export class SmsManager {
   async initialize(app: express.Application): Promise<void> {
     if (!configuration.get('sms.disabled')) {
       this.smsClient = new twilio.RestClient(configuration.get('sms.twilio.accountSid'), configuration.get('sms.twilio.authToken'));
+      app.post('/d/twilio', (request: Request, response: Response) => {
+        void this.handleTwilioCallback(request, response);
+      });
     }
-    app.post('/d/twilio', (request: Request, response: Response) => {
-      void this.handleTwilioCallback(request, response);
-    });
   }
 
   setHandler(handler: SmsInboundMessageHandler): void {
@@ -43,7 +45,7 @@ export class SmsManager {
   private async handleTwilioCallback(request: Request, response: Response): Promise<void> {
     const notification = request.body;
     if (!notification || !notification.To || !notification.From || !notification.Body) {
-      return new RestServiceResult(null, 400, "Invalid Twilio notification");
+      response.status(400).send("Invalid Twilio notification");
     }
     if (!configuration.get('sms.twilio.skipValidation', false)) {
       const options: twilio.WebhookExpressOptions = {

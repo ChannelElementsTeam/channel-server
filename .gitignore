@@ -1,3 +1,5 @@
 dist
 node_modules
 npm-debug.log
+config.dev.json
+dev.config.json

@@ -34,7 +34,7 @@
     "secp256k1": "^3.3.0",
     "signal-exit": "^3.0.2",
     "text-encoding": "^0.6.4",
-    "twilio": "^3.4.0",
+    "twilio": "^2.11.1",
     "uuid": "^3.0.1",
     "websocket": "^1.0.24"
   },

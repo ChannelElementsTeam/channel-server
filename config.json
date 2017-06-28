@@ -35,7 +35,7 @@
     }
   },
   "sms": {
-    "disabled": false,
+    "disabled": true,
     "phoneNumber": "+16505551212",
     "twilio": {
       "accountSid": "***",
