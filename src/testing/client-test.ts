@@ -237,7 +237,12 @@ export class ClientTester {
       timezone: 'America/Los_Angeles',
       notifications: {
         smsNumber: phoneNumber,
-        smsNotificationCallbackUrlTemplate: "http://localhost:31112/channel/{{channel}}"
+        smsNotificationCallbackUrlTemplate: "http://localhost:31112/channel/{{channel}}",
+        timing: {
+          noNotificationDays: [],
+          notBeforeMinutes: 60 * 8,
+          notAfterMinutes: 60 * 21
+        }
       }
     };
     const request: ChannelServiceRequest<SignedKeyIdentity, UpdateRegistrationDetails> = {

@@ -5,6 +5,7 @@ import * as uuid from "uuid";
 import * as auth from "basic-auth";
 import * as url from 'url';
 import * as expressHandlebars from 'express-handlebars';
+import * as moment from 'moment-timezone';
 
 import { TextDecoder, TextEncoder } from 'text-encoding';
 
@@ -30,6 +31,7 @@ const DYNAMIC_BASE = '/d';
 const MINIMUM_NOTIFICATION_CONSIDER_INTERVAL = 1000 * 60 * 5;
 const MINIMUM_CHANNEL_NOTIFICATION_ACTIVE_INTERVAL = 1000 * 60 * 10;
 const MINIMUM_CHANNEL_NOTIFICATION_INACTIVE_INTERVAL = 1000 * 60 * 60;
+const DEFAULT_MIN_SMS_INTERVAL_MINS = 60;
 
 export class ChannelServer implements TransportEventHandler, SmsInboundMessageHandler {
   private providerUrl: string;
@@ -366,6 +368,12 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
       }
       if (updateRegistrationRequest.details.notifications.webPushNotifications) {
         settings.webPushNotifications = updateRegistrationRequest.details.notifications.webPushNotifications;
+      }
+      if (typeof updateRegistrationRequest.details.notifications.minimumChannelActiveNotificationIntervalMinutes === 'number') {
+        settings.minimumChannelActiveNotificationIntervalMinutes = updateRegistrationRequest.details.notifications.minimumChannelActiveNotificationIntervalMinutes;
+      }
+      if (typeof updateRegistrationRequest.details.notifications.minimumChannelInactiveNotificationIntervalMinutes === 'number') {
+        settings.minimumChannelInactiveNotificationIntervalMinutes = updateRegistrationRequest.details.notifications.minimumChannelInactiveNotificationIntervalMinutes;
       }
     }
     if (registration) {
@@ -805,7 +813,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
       if (smsBlock && smsBlock.blocked) {
         continue;
       }
-      if (now - registration.lastSmsNotification < registration.notifications.minimumSmsIntervalMinutes * 60 * 1000) {
+      if (now - registration.lastSmsNotification < (registration.notifications.minimumSmsIntervalMinutes ? registration.notifications.minimumSmsIntervalMinutes : DEFAULT_MIN_SMS_INTERVAL_MINS) * 60 * 1000) {
         continue;
       }
       if (this.isBlackedOut(registration.notifications.timing, registration.timezone)) {
@@ -813,7 +821,9 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
       }
       // We'll choose the minimum interval depending on whether they became active after I last sent a notification
       // suggesting that they are interested, and therefore a shorter interval between notifications is warranted
-      const minimumInterval = channelMemberRecord.lastNotificationSent > channelMemberRecord.lastActive ? MINIMUM_CHANNEL_NOTIFICATION_INACTIVE_INTERVAL : MINIMUM_CHANNEL_NOTIFICATION_ACTIVE_INTERVAL;
+      const inactiveInterval = registration.notifications.minimumChannelInactiveNotificationIntervalMinutes ? registration.notifications.minimumChannelInactiveNotificationIntervalMinutes : MINIMUM_CHANNEL_NOTIFICATION_INACTIVE_INTERVAL;
+      const activeInterval = registration.notifications.minimumChannelActiveNotificationIntervalMinutes ? registration.notifications.minimumChannelActiveNotificationIntervalMinutes : MINIMUM_CHANNEL_NOTIFICATION_ACTIVE_INTERVAL;
+      const minimumInterval = channelMemberRecord.lastNotificationSent > channelMemberRecord.lastActive ? inactiveInterval : activeInterval;
       if (now - channelMemberRecord.lastNotificationSent < minimumInterval) {
         continue;
       }
@@ -822,7 +832,27 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
   }
 
   private isBlackedOut(timing: NotificationTiming, timezone: string): boolean {
-    // TODO
+    if (!timing || !timezone) {
+      return false;
+    }
+    const m = moment().tz(timezone);
+    if (timing.noNotificationDays) {
+      for (const d of timing.noNotificationDays) {
+        if (m.day() === d) {
+          return true;
+        }
+      }
+    }
+    if (timing.notBeforeMinutes) {
+      if (m.hours() * 60 + m.minutes() < timing.notBeforeMinutes) {
+        return true;
+      }
+    }
+    if (timing.notAfterMinutes) {
+      if (m.hours() * 60 + m.minutes() > timing.notAfterMinutes) {
+        return true;
+      }
+    }
     return false;
   }
 
