@@ -58,6 +58,11 @@ class TestClient {
       const controlMessage = messageInfo.controlMessagePayload.jsonMessage as ControlChannelMessage;
       if (controlMessage.type === 'ping') {
         const byteArray = ChannelMessageUtils.serializeControlMessage(controlMessage.requestId, 'ping-reply', {});
+        console.log("---------------------------------");
+        console.log(JSON.stringify(controlMessage, null, 2));
+        console.log("---------------------------------");
+        console.log(JSON.stringify(ChannelMessageUtils.createControlMessage(controlMessage.requestId, 'ping-reply', {}), null, 2));
+        console.log("---------------------------------");
         this.conn.sendBytes(new Buffer(byteArray));
         handled = true;
       } else if (controlMessage.requestId) {
@@ -68,11 +73,17 @@ class TestClient {
         }
       } else if (controlMessage.type === 'history-message') {
         console.log("History-message", JSON.stringify(messageInfo));
+        // console.log("---------------------------------");
+        // console.log(JSON.stringify(controlMessage, null, 2));
+        // console.log("---------------------------------");
       }
     }
     if (!handled) {
       if (messageInfo.controlMessagePayload) {
         console.log("TestClient: Control Message Received", this.id, messageInfo.timestamp, JSON.stringify(messageInfo.controlMessagePayload.jsonMessage));
+        console.log("---------------------------------");
+        console.log(JSON.stringify(messageInfo.controlMessagePayload.jsonMessage, null, 2));
+        console.log("---------------------------------");
       } else {
         const payloadString = new TextDecoder('utf-8').decode(messageInfo.fullPayload);
         console.log("TestClient: Channel Message Received", this.id, messageInfo.channelCode, messageInfo.senderCode, messageInfo.timestamp, payloadString);
@@ -148,6 +159,7 @@ export class ClientTester {
     await this.getShare(client, from);
     await this.accept(client, name);
     await this.listChannels(client);
+    await this.getChannel(client, client.channelResponse.channelAddress);
     response.end();
   }
 
@@ -392,6 +404,11 @@ export class ClientTester {
         return new Promise<void>((innerResolve, innerReject) => {
           client.joinResponseDetails = controlMessage.details as JoinResponseDetails;
           innerResolve();
+          // console.log("---------------------------------");
+          // console.log(JSON.stringify(ChannelMessageUtils.createControlMessage(requestId, 'join', details), null, 2));
+          // console.log("---------------------------------");
+          // console.log(JSON.stringify(controlMessage, null, 2));
+          // console.log("---------------------------------");
           resolve();
         });
       });
@@ -413,6 +430,11 @@ export class ClientTester {
         return new Promise<void>((innerResolve, innerReject) => {
           console.log("TestClient: history reply", JSON.stringify(controlMessage.details));
           innerResolve();
+          // console.log("---------------------------------");
+          // console.log(JSON.stringify(ChannelMessageUtils.createControlMessage(requestId, 'history', details), null, 2));
+          // console.log("---------------------------------");
+          // console.log(JSON.stringify(controlMessage, null, 2));
+          // console.log("---------------------------------");
           resolve();
         });
       });
@@ -440,6 +462,11 @@ export class ClientTester {
         if (shareResponse.statusCode === 200) {
           console.log("TestClient: Share code created", JSON.stringify(data));
           client.shareResponse = data as ChannelShareResponse;
+          // console.log("______________________");
+          // console.log(JSON.stringify(shareRequest, null, 2));
+          // console.log("______________________");
+          // console.log(JSON.stringify(data, null, 2));
+          // console.log("______________________");
           resolve();
         } else {
           console.error("Failed", shareResponse.statusCode, new TextDecoder('utf-8').decode(data));
@@ -524,6 +551,11 @@ export class ClientTester {
         if (channelResponse.statusCode === 200) {
           client.channelResponse = data as ChannelGetResponse;
           console.log("TestClient: Channel fetched", JSON.stringify(data));
+          // console.log("______________________");
+          // console.log(JSON.stringify(request, null, 2));
+          // console.log("______________________");
+          // console.log(JSON.stringify(data, null, 2));
+          // console.log("______________________");
           resolve();
         } else {
           console.error("Failed", channelResponse.statusCode, new TextDecoder('utf-8').decode(data));
@@ -551,6 +583,11 @@ export class ClientTester {
         if (channelListResponse.statusCode === 200) {
           client.channelListResponse = data as ChannelsListResponse;
           console.log("TestClient: Channel list fetched", JSON.stringify(data));
+          // console.log("______________________");
+          // console.log(JSON.stringify(request, null, 2));
+          // console.log("______________________");
+          // console.log(JSON.stringify(data, null, 2));
+          // console.log("______________________");
           resolve();
         } else {
           console.error("Failed", channelListResponse.statusCode, new TextDecoder('utf-8').decode(data));
@@ -587,6 +624,11 @@ export class ClientTester {
           delete client.joinResponseDetails;
           console.log("TestClient: Leave completed: " + permanently);
           innerResolve();
+          // console.log("---------------------------------");
+          // console.log(JSON.stringify(ChannelMessageUtils.createControlMessage(requestId, 'leave', details), null, 2));
+          // console.log("---------------------------------");
+          // console.log(JSON.stringify(controlMessage, null, 2));
+          // console.log("---------------------------------");
           resolve();
         });
       });
@@ -612,6 +654,12 @@ export class ClientTester {
       this.restClient.post(client.serviceEndpoints.restServiceUrl, args, (data: any, deleteResponse: Response) => {
         if (deleteResponse.statusCode === 200) {
           console.log("TestClient: Channel deleted", JSON.stringify(data));
+          // console.log("______________________");
+          // console.log(JSON.stringify(request, null, 2));
+          // console.log("______________________");
+          // console.log(JSON.stringify(data, null, 2));
+          // console.log("______________________");
+
           resolve();
         } else {
           console.error("Failed", deleteResponse.statusCode, new TextDecoder('utf-8').decode(data));
