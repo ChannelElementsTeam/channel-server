@@ -106,6 +106,9 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
         name: "Channel Elements",
         logo: url.resolve(configuration.get('baseClientUri'), '/s/logo.png'),
         homepage: configuration.get('baseClientUri'),
+        account: null,
+        bankUrl: null,
+        publicKey: null,
         details: {}
       },
       implementation: {
@@ -183,7 +186,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
         await db.updateRegistrationStatus(address, 'active');
       }
     } else {
-      await db.insertRegistration(address, signedIdentity, identity, now, now, 'active');
+      await db.insertRegistration(address, signedIdentity, identity, now, now, 'active', -100, 100);
     }
   }
   private async updateLastActive(address: string): Promise<void> {
@@ -382,7 +385,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
     if (registration) {
       await db.updateRegistrationSettings(registration, updateRegistrationRequest.details.timezone, settings);
     } else {
-      await db.insertRegistration(identity.address, updateRegistrationRequest.identity, identity, 0, Date.now(), 'active', updateRegistrationRequest.details.timezone, settings);
+      await db.insertRegistration(identity.address, updateRegistrationRequest.identity, identity, 0, Date.now(), 'active', -100, 100, updateRegistrationRequest.details.timezone, settings);
     }
     await this.updateLastActive(identity.address);
     await this.completeGetRegistration(registration, request, response);
@@ -397,7 +400,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
       response.status(400).send("Invalid identity");
       return null;
     }
-    const keyIdentity = ChannelIdentityUtils.verifySignedObject<KeyIdentity>(signedIdentity, signedIdentity.publicKey, Date.now());
+    const keyIdentity = ChannelIdentityUtils.decode<KeyIdentity>(signedIdentity.signature, signedIdentity.publicKey, Date.now());
     if (!keyIdentity || !keyIdentity.publicKey || keyIdentity.publicKey !== signedIdentity.publicKey) {
       response.status(400).send("Invalid identity signature or signedAt");
       return null;
@@ -414,7 +417,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
       response.status(400).send("Invalid identity");
       return null;
     }
-    const addressIdentity = ChannelIdentityUtils.verifySignedObject<AddressIdentity>(signedIdentity, channelMemberRecord.identity.publicKey, Date.now());
+    const addressIdentity = ChannelIdentityUtils.decode<AddressIdentity>(signedIdentity.signature, channelMemberRecord.identity.publicKey, Date.now());
     if (!addressIdentity || !addressIdentity.address || addressIdentity.address !== signedIdentity.address) {
       response.status(403).send("Invalid identity signature or signedAt");
     }
@@ -928,7 +931,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
       result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 403, "You are not a member of this channel", requestDetails ? requestDetails.channelAddress : null));
       return result;
     }
-    if (!ChannelIdentityUtils.verifySignedObject(requestDetails.memberIdentity, channelMemberRecord.identity.publicKey, Date.now())) {
+    if (!ChannelIdentityUtils.decode(requestDetails.memberIdentity.signature, channelMemberRecord.identity.publicKey, Date.now())) {
       result.deliverControlMessages.push(this.createErrorMessageDirective(controlRequest, socket.socketId, 403, "Your signed address is not valid", requestDetails ? requestDetails.channelAddress : null));
       return result;
     }

@@ -32,6 +32,9 @@
         "rx": true,
         "tx": true
       }
+    },
+    "clientTester": {
+      "enabled": true
     }
   },
   "sms": {

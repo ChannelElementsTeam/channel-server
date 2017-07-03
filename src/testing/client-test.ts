@@ -8,7 +8,7 @@ import { ChannelShareCodeResponse, ChannelShareResponse, ChannelsListResponse, C
 import { JoinResponseDetails, ControlChannelMessage, JoinRequestDetails, HistoryRequestDetails, LeaveRequestDetails } from "channels-common";
 import { ChannelMessage, ChannelMessageUtils, MessageToSerialize } from "channels-common";
 import { ChannelContractDetails, ChannelInformation, MemberContractDetails } from "channels-common";
-import { AddressIdentity, FullIdentity, ChannelIdentityUtils, KeyIdentity, SignedAddressIdentity, SignedKeyIdentity, UpdateRegistrationDetails, UpdateRegistrationResponse } from "channels-common";
+import { AddressIdentity, FullIdentity, ChannelIdentityUtils, KeyIdentity, SignedAddressIdentity, SignedKeyIdentity, UpdateRegistrationDetails, UpdateRegistrationResponse, ChannelBankDescription, BankServiceRequest, BankOpenAccountDetails, BankOpenAccountResponse, BankTransferDetails, BankTransferResponse, BankGetAccountDetails, BankGetAccountResponse } from "channels-common";
 import { Utils } from "../utils";
 const RestClient = require('node-rest-client').Client;
 const basic = require('basic-authorization-header');
@@ -44,6 +44,8 @@ class TestClient {
   joinResponseDetails?: JoinResponseDetails;
   registration?: UpdateRegistrationResponse;
   privateKey: Uint8Array;
+  bankResponse: ChannelBankDescription;
+  bankAccountResponse: BankOpenAccountResponse;
 
   constructor(name: string) {
     this.privateKey = ChannelIdentityUtils.generatePrivateKey();
@@ -122,6 +124,15 @@ export class ClientTester {
     });
     app.get('/d/test/register', (request: Request, response: Response) => {
       void this.handleRegister(request, response);
+    });
+    app.get('/d/test/bankOpen', (request: Request, response: Response) => {
+      void this.handleBankOpen(request, response);
+    });
+    app.get('/d/test/bankTransfer', (request: Request, response: Response) => {
+      void this.handleBankTransfer(request, response);
+    });
+    app.get('/d/test/bankAccount', (request: Request, response: Response) => {
+      void this.handleGetBankAccount(request, response);
     });
   }
 
@@ -309,10 +320,18 @@ export class ClientTester {
           history: true,
           topology: 'many-to-many'
         },
+        channelPricing: {
+          perMessageSent: 0,
+          perMessageDelivered: 0,
+          perMessageStored: 0
+        },
         extensions: {}
       },
       participationContract: {
         type: "https://channelelements.com/contracts/participation/standard",
+        cards: {
+          "*": { price: 0 }
+        },
         extensions: {}
       }
     };
@@ -668,6 +687,185 @@ export class ClientTester {
       });
     });
   }
+
+  private async handleBankOpen(request: Request, response: Response): Promise<void> {
+    const id = request.query.id;
+    if (!id) {
+      response.status(400).send("Missing id param");
+      return;
+    }
+    const client = this.clientsById[id];
+    if (!client) {
+      response.status(404).send("No such client");
+      return;
+    }
+    await this.fetchBank(client);
+    await this.openBankAccount(client);
+    response.end();
+  }
+
+  private async handleGetBankAccount(request: Request, response: Response): Promise<void> {
+    const id = request.query.id;
+    if (!id) {
+      response.status(400).send("Missing id param");
+      return;
+    }
+    const client = this.clientsById[id];
+    if (!client) {
+      response.status(404).send("No such client");
+      return;
+    }
+    await this.getBankAccount(client);
+    response.end();
+  }
+
+  private async handleBankTransfer(request: Request, response: Response): Promise<void> {
+    const id = request.query.id;
+    const toId = request.query.toId;
+    if (!id || !toId) {
+      response.status(400).send("Missing id and/or toId params");
+      return;
+    }
+    const client = this.clientsById[id];
+    if (!client) {
+      response.status(404).send("No such client");
+      return;
+    }
+    const toClient = this.clientsById[toId];
+    if (!toClient) {
+      response.status(404).send("No such to client");
+      return;
+    }
+    const amount = request.query.amount ? Number(request.query.amount) : 1;
+    await this.transfer(client, toClient, amount, request.query.reference);
+    response.end();
+  }
+
+  private async fetchBank(client: TestClient): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const bankUrl = url.resolve(configuration.get('baseClientUri'), '/channel-bank.json');
+      this.restClient.get(bankUrl, (data: any, bankResponse: Response) => {
+        if (bankResponse.statusCode === 200) {
+          console.log("TestClient: bank information", JSON.stringify(data));
+          client.bankResponse = data as ChannelBankDescription;
+          console.log("Bank Description Response --------------------------------------------------------------------------");
+          console.log(JSON.stringify(client.bankResponse, null, 2));
+          console.log("Bank Description Response --------------------------------------------------------------------------");
+          resolve();
+        } else {
+          console.error("Failed", bankResponse.statusCode, new TextDecoder('utf-8').decode(data));
+          reject("Get bank failed");
+        }
+      });
+    });
+  }
+
+  private async openBankAccount(client: TestClient): Promise<void> {
+    const details: BankOpenAccountDetails = {};
+    const request: BankServiceRequest<SignedKeyIdentity, BankOpenAccountDetails> = {
+      type: 'open-account',
+      identity: client.signedIdentity,
+      details: details
+    };
+    const args: PostArgs = {
+      data: request,
+      headers: {
+        "Content-Type": "application/json"
+      }
+    };
+    console.log("TestClient: Opening bank account...");
+    return new Promise<void>((resolve, reject) => {
+      this.restClient.post(client.bankResponse.serviceEndpoints.restServiceUrl, args, (data: any, openAccountResponse: Response) => {
+        if (openAccountResponse.statusCode === 200) {
+          client.bankAccountResponse = data as BankOpenAccountResponse;
+          console.log("TestClient: account opened", JSON.stringify(client.bankAccountResponse));
+          console.log("Open Account Request --------------------------------------------------------------------------");
+          console.log(JSON.stringify(request, null, 2));
+          console.log("Open Account Response --------------------------------------------------------------------------");
+          console.log(JSON.stringify(data, null, 2));
+          console.log("Open Account --------------------------------------------------------------------------");
+          resolve();
+        } else {
+          console.log("TestClient: Failed", openAccountResponse.statusCode, new TextDecoder('utf-8').decode(data));
+          reject(openAccountResponse.statusCode);
+        }
+      });
+    });
+  }
+
+  private async getBankAccount(client: TestClient): Promise<void> {
+    const details: BankGetAccountDetails = {};
+    const request: BankServiceRequest<SignedAddressIdentity, BankGetAccountDetails> = {
+      type: 'get-account',
+      identity: client.signedAddress,
+      details: details
+    };
+    const args: PostArgs = {
+      data: request,
+      headers: {
+        "Content-Type": "application/json"
+      }
+    };
+    return new Promise<void>((resolve, reject) => {
+      this.restClient.post(client.bankResponse.serviceEndpoints.restServiceUrl, args, (data: any, getAccountResponse: Response) => {
+        if (getAccountResponse.statusCode === 200) {
+          client.bankAccountResponse = data as BankGetAccountResponse;
+          console.log("TestClient: account information", JSON.stringify(client.bankAccountResponse));
+          console.log("Get Account Request --------------------------------------------------------------------------");
+          console.log(JSON.stringify(request, null, 2));
+          console.log("Get Account Response --------------------------------------------------------------------------");
+          console.log(JSON.stringify(data, null, 2));
+          console.log("Get Account --------------------------------------------------------------------------");
+          resolve();
+        } else {
+          console.log("TestClient: Failed", getAccountResponse.statusCode, new TextDecoder('utf-8').decode(data));
+          reject(getAccountResponse.statusCode);
+        }
+      });
+    });
+  }
+
+  private async transfer(client: TestClient, toClient: TestClient, amount: number, reference: string): Promise<void> {
+    const details: BankTransferDetails = {
+      amount: amount,
+      to: {
+        bankUrl: toClient.bankResponse.serviceEndpoints.descriptionUrl,
+        accountAddress: toClient.signedAddress.address
+      },
+      requestReference: reference
+    };
+    const request: BankServiceRequest<SignedAddressIdentity, BankTransferDetails> = {
+      type: 'transfer',
+      identity: client.signedAddress,
+      details: details
+    };
+    const args: PostArgs = {
+      data: request,
+      headers: {
+        "Content-Type": "application/json"
+      }
+    };
+    return new Promise<void>((resolve, reject) => {
+      this.restClient.post(client.bankResponse.serviceEndpoints.restServiceUrl, args, (data: any, transferResponse: Response) => {
+        if (transferResponse.statusCode === 200) {
+          const transfer = data as BankTransferResponse;
+          console.log("TestClient: transfer completed", JSON.stringify(transfer));
+          console.log("Transfer Request --------------------------------------------------------------------------");
+          console.log(JSON.stringify(request, null, 2));
+          console.log("Transfer Response Response --------------------------------------------------------------------------");
+          console.log(JSON.stringify(data, null, 2));
+          console.log("Transfer Receipt Decoded Response --------------------------------------------------------------------------");
+          console.log(JSON.stringify(ChannelIdentityUtils.decode(transfer.signedReceipts[0].signedReceipt, client.bankResponse.bank.publicKey, Date.now()), null, 2));
+          console.log("Transfer --------------------------------------------------------------------------");
+          resolve();
+        } else {
+          console.log("TestClient: Failed", transferResponse.statusCode, new TextDecoder('utf-8').decode(data));
+          reject(transferResponse.statusCode);
+        }
+      });
+    });
+  }
+
 }
 
 const clientTester = new ClientTester();
