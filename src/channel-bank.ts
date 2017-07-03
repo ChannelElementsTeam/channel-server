@@ -232,8 +232,8 @@ export class ChannelBank {
     await db.insertBankTransaction(transactionId, details.requestReference, from, details.to, now, 'pending', []);
     await db.insertBankAccountTransaction(account.identity.address, transactionId, details.requestReference, transactionId, 'transfer-from', details.amount, now, from, details.to, 'complete');
     await db.insertBankAccountTransaction(details.to.accountAddress, transactionId, details.requestReference, transactionId, 'transfer-to', details.amount, now, from, details.to, 'complete');
-    await db.incrementBankAccountBalance(account.identity.address, -details.amount);
-    await db.incrementBankAccountBalance(details.to.accountAddress, details.amount);
+    await db.incrementBankAccountBalance(account.identity.address, -details.amount, now);
+    await db.incrementBankAccountBalance(details.to.accountAddress, details.amount, now);
     const receipt: BankTransferReceipt = {
       requestReference: details.requestReference,
       bankReference: transactionId,

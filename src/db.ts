@@ -396,8 +396,12 @@ export class Database {
     return await this.bankAccounts.findOne({ "identity.address": address });
   }
 
-  async incrementBankAccountBalance(address: string, amount: number): Promise<void> {
-    await this.bankAccounts.update({ "identity.address": address }, { $inc: { balance: amount } });
+  async incrementBankAccountBalance(address: string, amount: number, lastTransaction: number): Promise<void> {
+    const update: any = { $inc: { balance: amount } };
+    if (lastTransaction) {
+      update["$set"] = { lastTransaction: lastTransaction };
+    }
+    await this.bankAccounts.update({ "identity.address": address }, update);
   }
 
   async insertBankTransaction(transactionId: string, requestReference: string, from: BankAccountInformation, to: BankAccountInformation, timestamp: number, status: string, receiptChain: SignedBankReceipt[]): Promise<BankTransactionRecord> {
