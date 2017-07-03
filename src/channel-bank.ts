@@ -84,7 +84,7 @@ export class ChannelBank {
 
   getServicesList(): BankServiceEndpoints {
     const result: BankServiceEndpoints = {
-      descriptionUrl: this.providerUrl,
+      descriptionUrl: this.bankUrl,
       homeUrl: this.homeUrl,
       restServiceUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/bank'),
     };
