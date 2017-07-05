@@ -1,5 +1,5 @@
 
-import { ChannelContractDetails, MemberContractDetails, FullIdentity, SignedKeyIdentity, NotificationSettings, KeyIdentity } from "channels-common";
+import { ChannelContractDetails, MemberContractDetails, FullIdentity, SignedKeyIdentity, NotificationSettings, KeyIdentity, BankAccountInformation, SignedBankReceipt } from "channels-common";
 
 export interface RegistrationRecord {
   address: string;
@@ -58,4 +58,44 @@ export interface MessageRecord {
   timestamp: number;
   size: number;
   contents: string;
+}
+
+export interface BankAccountRecord {
+  signedIdentity: SignedKeyIdentity;
+  identity: KeyIdentity;
+  opened: number;
+  balance: number;
+  lastTransaction: number;
+  status: string;
+}
+
+export interface BankTransactionRecord {
+  transactionId: string;
+  requestReference: string;
+  bankReference: string;
+  from: BankAccountInformation;
+  to: BankAccountInformation;
+  timestamp: number;
+  status: string;
+  receiptChain: SignedBankReceipt[];
+}
+
+export interface BankAccountTransactionRecord {
+  accountAddress: string;
+  transactionId: string;
+  requestReference: string;
+  bankReference: string;
+  type: string;  // 'transfer-in', 'transfer-out', 'deposit', 'withdrawal'
+  amount: number; // positive:  increase in balance, negative: decrease in balance
+  from: BankAccountInformation;
+  to: BankAccountInformation;
+  timestamp: number;
+  status: string;
+}
+
+export interface BankInfo {
+  id: string;
+  privateKey: string;
+  name: string;
+  created: number;
 }
