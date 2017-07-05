@@ -589,7 +589,8 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
           memberCount: await db.countChannelMembers(channelRecord.channelAddress, 'active'),
           members: [],
           created: channelRecord.created,
-          lastUpdated: channelRecord.lastUpdated
+          lastUpdated: channelRecord.lastUpdated,
+          name: channelRecord.name
         };
         const members = await db.findChannelMembers(channelRecord.channelAddress, 'active');
         for (const member of members) {
