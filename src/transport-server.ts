@@ -2,9 +2,9 @@ import * as express from "express";
 import { Request, Response } from 'express';
 import * as net from 'net';
 
-import { ChannelMemberRecord, UserRecord } from "./interfaces/db-records";
-import { ControlChannelMessage, ChannelMessageUtils, DeserializedMessage, ChannelMessage } from "./common/channel-server-messages";
+import { ChannelMemberRecord } from "./interfaces/db-records";
 import { configuration } from "./configuration";
+import { ChannelMessageUtils, ChannelMessage, ControlChannelMessage } from "channels-common";
 
 export class TransportServer {
   private expressWs: any;

@@ -32,6 +32,18 @@
         "rx": true,
         "tx": true
       }
+    },
+    "clientTester": {
+      "enabled": true
+    }
+  },
+  "sms": {
+    "disabled": true,
+    "phoneNumber": "+16505551212",
+    "twilio": {
+      "accountSid": "***",
+      "authToken": "***",
+      "skipValidation": true
     }
   }
 }

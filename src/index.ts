@@ -13,12 +13,12 @@ import * as url from 'url';
 import { configuration } from "./configuration";
 import { db } from './db';
 import { ChannelServer } from './channel-server';
+import { ChannelBank } from './channel-bank';
 
 import { clientTester } from './testing/client-test';
-import { ChannelServerResponse } from "./common/channel-server-messages";
+import { ChannelServiceDescription, ChannelIdentityUtils } from "channels-common";
 
 const VERSION = 1;
-const DYNAMIC_BASE = '/d';
 
 class ChannelElementsServer {
   private app: express.Application;
@@ -26,56 +26,25 @@ class ChannelElementsServer {
   private expressWs: any;
   private started: number;
   private channelServer: ChannelServer;
+  private channelBank: ChannelBank;
 
   async start(): Promise<void> {
     this.setupExceptionHandling();
     await this.setupConfiguration();
     await db.initialize();
     await this.setupExpress();
-    this.channelServer = new ChannelServer(this.app, this.server, url.resolve(configuration.get('baseClientUri'), "/channel-elements.json"), configuration.get('baseClientUri'), configuration.get('baseClientUri'), DYNAMIC_BASE, configuration.get('baseTransportUri'), '/transport/s1', configuration.get('ping.interval', 30000), configuration.get('ping.timeout', 15000));
+    this.channelServer = new ChannelServer(this.app, this.server);
     await this.channelServer.start();
+    this.channelBank = new ChannelBank(this.app, this.server);
+    await this.channelBank.start();
     await this.setupServerPing();
-    await this.setupChannelServerResponse();
     this.started = Date.now();
 
-    clientTester.initialize(this.app);
+    if (configuration.get('debug.clientTester.enabled', false)) {
+      clientTester.initialize(this.app);
+    }
 
     console.log("Channel Elements Server is running");
-  }
-
-  private setupChannelServerResponse() {
-    this.app.get('/channel-elements.json', (request: Request, response: Response) => {
-      const reply: ChannelServerResponse = {
-        protocolVersion: "0.1.0",
-        provider: {
-          name: "ChannelElements",
-          logo: url.resolve(configuration.get('baseClientUri'), '/s/logo.png'),
-          homepage: configuration.get('baseClientUri'),
-          details: {}
-        },
-        implementation: {
-          name: "Channel Elements Reference Server",
-          logo: url.resolve(configuration.get('baseClientUri'), '/s/logo.png'),
-          homepage: "https://github.com/ChannelElementsTeam/channel-server",
-          version: "0.1.0",
-          details: {
-            comment: "Under construction"
-          }
-        },
-        services: this.channelServer.getServicesList(),
-        implementationDetails: this.getServerImplementationDetails()
-      };
-      response.json(reply);
-    });
-  }
-
-  private getServerImplementationDetails(): any {
-    const result: any = {
-      implementation: "Reference Implementation",
-      by: "HivePoint, Inc.",
-      contact: "info@hivepoint.com"
-    };
-    return result;
   }
 
   private setupExceptionHandling(): void {

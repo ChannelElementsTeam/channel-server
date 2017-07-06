@@ -6,6 +6,14 @@ export class Configuration {
     console.log("Reading configuration from " + path);
     const data = fs.readFileSync(path, 'utf8');
     this.data = JSON.parse(data);
+    const devPath = path.replace('config\.json', 'dev.config.json');
+    if (fs.existsSync(devPath)) {
+      const devData = fs.readFileSync(devPath, 'utf8');
+      const parsedDev = JSON.parse(devData);
+      for (const key of Object.keys(parsedDev)) {
+        this.data[key] = parsedDev[key];
+      }
+    }
     if (this.data.mongo && this.data.mongo.mongoUrl) {
       this.data.mongo.mongoUrl = this.data.mongo.mongoUrl.split("{domain}").join(this.data.domain.split(".").join("_"));
     }
