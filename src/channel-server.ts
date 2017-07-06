@@ -520,6 +520,9 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
       created: channelRecord.created,
       lastUpdated: channelRecord.lastUpdated
     };
+    if (channelRecord.name) {
+      reply.name = channelRecord.name;
+    }
     const members = await db.findChannelMembers(channelRecord.channelAddress, 'active', 8);
     for (const member of members) {
       const m: ChannelMemberInfo = {
@@ -592,9 +595,11 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
           memberCount: await db.countChannelMembers(channelRecord.channelAddress, 'active'),
           members: [],
           created: channelRecord.created,
-          lastUpdated: channelRecord.lastUpdated,
-          name: channelRecord.name
+          lastUpdated: channelRecord.lastUpdated
         };
+        if (channelRecord.name) {
+          channelDetails.name = channelRecord.name;
+        }
         const members = await db.findChannelMembers(channelRecord.channelAddress, 'active');
         for (const member of members) {
           const info: ChannelMemberInfo = {
@@ -998,8 +1003,8 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
       for (const code of Object.keys(channelInfo.participantsByCode)) {
         const p = channelInfo.participantsByCode[code];
         const pId: ChannelParticipantIdentity = {
-          signedIdentity: channelMemberRecord.signedIdentity,
-          participantDetails: requestDetails.participantIdentityDetails
+          signedIdentity: p.memberSignedIdentity,
+          participantDetails: p.participantIdentityDetails
         };
         const info: ChannelParticipantInfo = {
           code: p.code,
