@@ -1,24 +1,25 @@
-<div style="max-width: 600px;margin: 50px auto;font-family:sans-serif;border:1px solid black;padding:10px;">
-  <h3>This URL is a Channel Elements share code</h3>
-
-  <p>Paste this URL into the share code area of your favorite ChannelElements client:</p>
-
-  <div style="text-align:center;font-weight:400;font-size:120%;margin:25px 0;">
-    <input class="copyText" type="text" style="font-size:12pt;width:400px;" value="{{sharecode}}"></input>
-    <button class="copyButton">Copy</button>
+<div style="padding: 20px; max-width: 550px; margin: 0 auto;">
+  <div>
+    <img src="/s/logos/logo_60.png">
   </div>
+  <div>
+    <p>To join this channel, copy this url and paste it in your favorite Channels client.</p>
+    <div class="horizontal layout center">
+      <div class="flex" style="padding-right: 10px;"><input id="txtCode" type="text" value="{{sharecode}}"></div>
+      <div><button id="btnCopy">Copy</button></div>
+    </div>
+    <p>If you do not have a client, you can use our web client: </p>
+    <p><a href="https://app.channelelements.net/#join/{{encodedsharecode}}">Open web client</a></p>
+  </div>
+
   <script>
-    var copyTextareaBtn = document.querySelector('.copyButton');
-    copyTextareaBtn.addEventListener('click', function (event) {
-      var textInput = document.querySelector('.copyText');
-      textInput.select();
+    var btn = document.querySelector("#btnCopy");
+    btn.addEventListener("click", function () {
+      var txt = document.querySelector("#txtCode");
+      txt.select();
       try {
         document.execCommand('copy');
-      } catch (err) {
-      }
+      } catch (err) { }
     });
   </script>
-
-  <p style=" margin-top:40px; ">If you don't already have a client, we host one that you are welcome to use.</p>
-  <div style="text-align:center;margin:20px 0; "><a href="https://app.channelelements.com ">open our Channel Elements Client</a></div>
 </div>
