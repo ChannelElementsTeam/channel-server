@@ -707,6 +707,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
   private async handleParticipantLeft(channel: ChannelInfo, participant: ParticipantInfo, socket: SocketInfo, permanently: boolean): Promise<number> {
     delete channel.participantsByCode[participant.code];
     delete channel.participantsByAddress[participant.memberIdentity.address];
+    delete socket.participantCodeByChannelAddress[channel.channelAddress];
     let count = 0;
     if (channel.contract.serviceContract.options.topology === 'many-to-many') {
       for (const code of Object.keys(channel.participantsByCode)) {
