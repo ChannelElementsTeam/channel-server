@@ -6,6 +6,7 @@ import * as auth from "basic-auth";
 import * as url from 'url';
 import * as expressHandlebars from 'express-handlebars';
 import * as moment from 'moment-timezone';
+import * as path from "path";
 
 import { TextDecoder, TextEncoder } from 'text-encoding';
 
@@ -68,6 +69,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
     this.pingInterval = configuration.get('ping.interval', 30000);
     this.pingTimeout = configuration.get('ping.timeout', 15000);
 
+    this.app.use('/s', express.static(path.join(__dirname, "../static"), { maxAge: 1000 * 60 * 60 * 24 * 30 }));
     this.app.engine('handlebars', expressHandlebars({ defaultLayout: 'main' }));
     this.app.set('view engine', 'handlebars');
   }
@@ -624,7 +626,8 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
       response.status(404).send("No such invitation");
       return;
     }
-    if (request.accepts('json')) {
+    const acceptHeader = (request.header("Accept") || "").toLowerCase();
+    if (acceptHeader.indexOf("application/json") >= 0) {
       const channelRecord = await db.findChannelByAddress(invitation.channelAddress);
       if (!channelRecord || channelRecord.status !== 'active') {
         response.status(404).send("The channel is no longer available");
@@ -645,6 +648,9 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
         helpers: {
           sharecode: () => {
             return url.resolve(this.restBaseUrl, '/i/' + invitation.id);
+          },
+          encodedsharecode: () => {
+            return encodeURIComponent(url.resolve(this.restBaseUrl, '/i/' + invitation.id));
           }
         }
       });
