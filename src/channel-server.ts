@@ -1143,7 +1143,8 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
       return;
     }
     const totalCount = await db.countMessages(channelRecord.channelAddress, requestDetails.before, requestDetails.after);
-    const count = totalCount < 100 ? totalCount : 100;
+    const maxCount = requestDetails.maxCount || 100;
+    const count = totalCount < maxCount ? totalCount : maxCount;
     const responseDetails: HistoryResponseDetails = {
       count: count,
       total: totalCount
