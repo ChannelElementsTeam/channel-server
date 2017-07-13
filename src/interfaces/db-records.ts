@@ -27,6 +27,7 @@ export interface ChannelRecord {
   transportUrl: string;
   created: number;
   lastUpdated: number;
+  lastActivity: number;
   deleted: number;
   contract: ChannelContractDetails;
   status: string;
@@ -40,6 +41,7 @@ export interface ChannelMemberRecord {
   added: number;
   status: string;
   lastActive: number;
+  lastChannelActivity: number;
   lastNotificationConsidered: number;
   lastNotificationSent: number;
 }

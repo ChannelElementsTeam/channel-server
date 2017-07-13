@@ -309,7 +309,6 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
     if (!identity) {
       return;
     }
-    await this.updateLastActive(channelMemberRecord.identity.address);
     await this.listChannels(identity, listRequest.details, request, response);
   }
 
@@ -545,6 +544,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
 
   private async deleteChannel(channelRecord: ChannelRecord, channelMemberRecord: ChannelMemberRecord, request: Request, response: Response): Promise<void> {
     await db.updateChannelStatus(channelRecord.channelAddress, 'deleted');
+    await db.updateChannelMemberStatusForAllMembers(channelRecord.channelAddress, 'deleted');
     const deleteResponse: ChannelDeleteResponse = {};
     response.json(deleteResponse);
     console.log("ChannelServer: channel deleted", channelMemberRecord.identity.address, channelRecord.channelAddress);
@@ -597,7 +597,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
           memberCount: await db.countChannelMembers(channelRecord.channelAddress, 'active'),
           members: [],
           created: channelRecord.created,
-          lastUpdated: channelRecord.lastUpdated
+          lastUpdated: channelRecord.lastActivity
         };
         if (channelRecord.name) {
           channelDetails.name = channelRecord.name;
@@ -778,10 +778,12 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
       result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 403, "This is a one-to-many channel.  Only the creator is allowed to send messages.", channelAddress));
       return result;
     }
+    const now = Date.now();
     if (messageInfo.history && channelInfo.contract.serviceContract.options.history) {
       await db.insertMessage(channelAddress, participant.memberIdentity.address, messageInfo.timestamp, messageInfo.serializedMessage.byteLength, messageInfo.serializedMessage);
+      await db.updateChannelActivity(channelAddress, now);
+      await db.updateChannelMembersChannelActivity(channelAddress, 'active', now);
     }
-    await this.updateChannelMemberActive(channelAddress, participant.code.toString());
     const socketIds: string[] = [];
     for (const code of Object.keys(channelInfo.participantsByCode)) {
       if (code !== messageInfo.senderCode.toString()) {
