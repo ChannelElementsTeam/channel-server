@@ -12,11 +12,11 @@ import * as url from 'url';
 
 import { configuration } from "./configuration";
 import { db } from './db';
-import { ChannelServer } from './channel-server';
-import { ChannelBank } from './channel-bank';
+import { ChannelsSwitch } from './channels-switch';
+import { ChannelsBank } from './channels-bank';
 
 import { clientTester } from './testing/client-test';
-import { ChannelServiceDescription, ChannelIdentityUtils } from "channels-common";
+import { ChannelIdentityUtils } from "channels-common";
 
 const VERSION = 1;
 
@@ -25,17 +25,17 @@ class ChannelElementsServer {
   private server: net.Server;
   private expressWs: any;
   private started: number;
-  private channelServer: ChannelServer;
-  private channelBank: ChannelBank;
+  private channelSwitch: ChannelsSwitch;
+  private channelBank: ChannelsBank;
 
   async start(): Promise<void> {
     this.setupExceptionHandling();
     await this.setupConfiguration();
     await db.initialize();
     await this.setupExpress();
-    this.channelServer = new ChannelServer(this.app, this.server);
-    await this.channelServer.start();
-    this.channelBank = new ChannelBank(this.app, this.server);
+    this.channelSwitch = new ChannelsSwitch(this.app, this.server);
+    await this.channelSwitch.start();
+    this.channelBank = new ChannelsBank(this.app, this.server);
     await this.channelBank.start();
     await this.setupServerPing();
     this.started = Date.now();

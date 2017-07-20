@@ -1,5 +1,6 @@
 
-import { ChannelContractDetails, MemberContractDetails, FullIdentity, SignedKeyIdentity, NotificationSettings, KeyIdentity, BankAccountInformation, SignedBankReceipt } from "channels-common";
+import { ChannelContractDetails, MemberContractDetails, FullIdentity, SignedKeyIdentity, NotificationSettings, KeyIdentity } from "channels-common";
+import { BankAccountInformation, SignedBankReceipt } from "channels-common/bin/channels-common";
 
 export interface RegistrationRecord {
   address: string;
@@ -8,6 +9,9 @@ export interface RegistrationRecord {
   lastActive: number;
   created: number;
   status: string;
+}
+
+export interface SwitchRegistrationRecord extends RegistrationRecord {
   timezone?: string;  // such as 'America/Los_Angeles'
   notifications?: NotificationSettings;
   lastSmsNotification: number;

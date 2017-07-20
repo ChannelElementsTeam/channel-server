@@ -4,14 +4,18 @@ import { configuration } from '../configuration';
 import { client as WebSocketClient, connection, IMessage } from 'websocket';
 import { TextDecoder, TextEncoder } from 'text-encoding';
 import * as url from "url";
-import { ChannelShareCodeResponse, ChannelShareResponse, ChannelsListResponse, ChannelCreateResponse, ChannelServiceDescription, ChannelAcceptResponse, ChannelGetResponse, ChannelCreateDetails, ChannelShareDetails, ChannelServiceRequest, ProviderServiceEndpoints, ChannelsListDetails, ChannelAcceptDetails, ChannelGetDetails, ChannelDeleteDetails } from "channels-common";
+import { ChannelShareCodeResponse, ChannelShareResponse, ChannelsListResponse, ChannelCreateResponse, ChannelAcceptResponse, ChannelGetResponse, ChannelCreateDetails, ChannelShareDetails, ChannelsListDetails, ChannelAcceptDetails, ChannelGetDetails, ChannelDeleteDetails } from "channels-common";
 import { JoinResponseDetails, ControlChannelMessage, JoinRequestDetails, HistoryRequestDetails, LeaveRequestDetails } from "channels-common";
 import { ChannelMessage, ChannelMessageUtils, MessageToSerialize } from "channels-common";
 import { ChannelContractDetails, ChannelInformation, MemberContractDetails } from "channels-common";
-import { AddressIdentity, FullIdentity, ChannelIdentityUtils, KeyIdentity, SignedAddressIdentity, SignedKeyIdentity, UpdateRegistrationDetails, UpdateRegistrationResponse, ChannelBankDescription, BankServiceRequest, BankOpenAccountDetails, BankOpenAccountResponse, BankTransferDetails, BankTransferResponse, BankGetAccountDetails, BankGetAccountResponse } from "channels-common";
+import { AddressIdentity, FullIdentity, ChannelIdentityUtils, KeyIdentity, SignedAddressIdentity, SignedKeyIdentity, UpdateSwitchRegistrationDetails, UpdateSwitchRegistrationResponse, BankServiceRequest, BankTransferDetails, BankTransferResponse, BankGetAccountDetails, BankGetAccountResponse, BankRegisterUserResponse, BankServiceDescription, SwitchingServiceRequest, BankRegisterUserDetails, SwitchServiceDescription } from "channels-common";
 import { Utils } from "../utils";
+import { ServiceDescription, ServiceEndpoints } from "channels-common/bin/channels-common";
 const RestClient = require('node-rest-client').Client;
 const basic = require('basic-authorization-header');
+
+const SWITCH_PROTOCOL_VERSION = 1;
+const BANK_PROTOCOL_VERSION = 1;
 
 interface PostArgs {
   data: any;
@@ -32,20 +36,20 @@ class TestClient {
   id: string;
   signedAddress: SignedAddressIdentity;
   signedIdentity: SignedKeyIdentity;
-  serviceEndpoints: ProviderServiceEndpoints;
+  serviceEndpoints: ServiceEndpoints;
   socket?: WebSocketClient;
   conn?: connection;
-  providerResponse?: ChannelServiceDescription;
+  providerResponse?: ServiceDescription;
   channelResponse?: ChannelInformation;
   channelListResponse?: ChannelsListResponse;
   requestIndex = 1;
   shareResponse?: ChannelShareResponse;
   shareCodeResponse?: ChannelShareCodeResponse;
   joinResponseDetails?: JoinResponseDetails;
-  registration?: UpdateRegistrationResponse;
+  switchRegistration?: UpdateSwitchRegistrationResponse;
   privateKey: Uint8Array;
-  bankResponse: ChannelBankDescription;
-  bankAccountResponse: BankOpenAccountResponse;
+  bankResponse: BankServiceDescription;
+  bankAccountResponse: BankRegisterUserResponse;
 
   constructor(name: string) {
     this.privateKey = ChannelIdentityUtils.generatePrivateKey();
@@ -122,12 +126,6 @@ export class ClientTester {
     app.get('/d/test/delete', (request: Request, response: Response) => {
       void this.handleDelete(request, response);
     });
-    app.get('/d/test/register', (request: Request, response: Response) => {
-      void this.handleRegister(request, response);
-    });
-    app.get('/d/test/bankOpen', (request: Request, response: Response) => {
-      void this.handleBankOpen(request, response);
-    });
     app.get('/d/test/bankTransfer', (request: Request, response: Response) => {
       void this.handleBankTransfer(request, response);
     });
@@ -140,13 +138,17 @@ export class ClientTester {
     const id = request.query.id;
     const name = request.query.name || 'unnamed';
     const channelName = request.query.channel;
+    const phone = request.query.phone;
     if (!id) {
       response.status(400).send("Missing id param");
       return;
     }
     const client = new TestClient(name);
     this.clientsById[id] = client;
-    await this.getProvider(client);
+    await this.getBankProvider(client);
+    await this.registerWithBank(client);
+    await this.getSwitchProvider(client);
+    await this.registerWithSwitch(client, phone);
     await this.createChannel(client, name, channelName);
     await this.shareChannel(client, name);
     await this.listChannels(client);
@@ -156,6 +158,7 @@ export class ClientTester {
   private async handleCreateClientFromShare(request: Request, response: Response): Promise<void> {
     const id = request.query.id;
     const name = request.query.name || 'unnamed';
+    const phone = request.query.phone;
     if (!id) {
       response.status(400).send("Missing id param");
       return;
@@ -167,7 +170,10 @@ export class ClientTester {
     }
     const client = new TestClient(name);
     this.clientsById[id] = client;
+    await this.getBankProvider(client);
+    await this.registerWithBank(client);
     await this.getShare(client, from);
+    await this.registerWithSwitch(client, phone);
     await this.accept(client, name);
     await this.listChannels(client);
     await this.getChannel(client, client.channelResponse.channelAddress);
@@ -235,28 +241,8 @@ export class ClientTester {
     response.end();
   }
 
-  private async handleRegister(request: Request, response: Response): Promise<void> {
-    const id = request.query.id;
-    const phone = request.query.phone;
-    if (!id || !phone) {
-      response.status(400).send("Missing id and/or phone param");
-      return;
-    }
-    if (!Utils.isPhoneNumber(phone)) {
-      response.status(400).send("Phone param doesn't look like a phone number");
-      return;
-    }
-    const client = this.clientsById[id];
-    if (!client) {
-      response.status(404).send("No such client");
-      return;
-    }
-    await this.register(client, Utils.cleanPhoneNumber(phone));
-    response.end();
-  }
-
-  private async register(client: TestClient, phoneNumber: string): Promise<void> {
-    const details: UpdateRegistrationDetails = {
+  private async registerWithSwitch(client: TestClient, phoneNumber: string): Promise<void> {
+    const details: UpdateSwitchRegistrationDetails = {
       timezone: 'America/Los_Angeles',
       notifications: {
         smsNumber: phoneNumber,
@@ -268,8 +254,9 @@ export class ClientTester {
         }
       }
     };
-    const request: ChannelServiceRequest<SignedKeyIdentity, UpdateRegistrationDetails> = {
-      type: 'update-registration',
+    const request: SwitchingServiceRequest<SignedKeyIdentity, UpdateSwitchRegistrationDetails> = {
+      version: SWITCH_PROTOCOL_VERSION,
+      type: 'register-user',
       identity: client.signedIdentity,
       details: details
     };
@@ -283,7 +270,7 @@ export class ClientTester {
       this.restClient.post(client.serviceEndpoints.restServiceUrl, args, (data: any, createResponse: Response) => {
         if (createResponse.statusCode === 200) {
           console.log("TestClient: Registration updated", JSON.stringify(data));
-          client.registration = data as UpdateRegistrationResponse;
+          client.switchRegistration = data as UpdateSwitchRegistrationResponse;
           resolve();
         } else {
           console.log("TestClient: Failed", createResponse.statusCode, new TextDecoder('utf-8').decode(data));
@@ -293,14 +280,14 @@ export class ClientTester {
     });
   }
 
-  private async getProvider(client: TestClient): Promise<void> {
+  private async getSwitchProvider(client: TestClient): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      const providerUrl = url.resolve(configuration.get('baseClientUri'), '/channel-elements.json');
+      const providerUrl = url.resolve(configuration.get('baseClientUri'), '/channels-switch.json');
 
       this.restClient.get(providerUrl, (data: any, providerResponse: Response) => {
         if (providerResponse.statusCode === 200) {
           console.log("TestClient: provider information", JSON.stringify(data));
-          client.providerResponse = data as ChannelServiceDescription;
+          client.providerResponse = data as SwitchServiceDescription;
           client.serviceEndpoints = client.providerResponse.serviceEndpoints;
           resolve();
         } else {
@@ -345,9 +332,10 @@ export class ClientTester {
     if (channelName) {
       details.name = channelName;
     }
-    const request: ChannelServiceRequest<SignedKeyIdentity, ChannelCreateDetails> = {
+    const request: SwitchingServiceRequest<SignedAddressIdentity, ChannelCreateDetails> = {
+      version: SWITCH_PROTOCOL_VERSION,
       type: 'create',
-      identity: client.signedIdentity,
+      identity: client.signedAddress,
       details: details
     };
     const args: PostArgs = {
@@ -465,7 +453,8 @@ export class ClientTester {
       channel: client.channelResponse.channelAddress,
       extensions: { name: name, sharing: true }
     };
-    const shareRequest: ChannelServiceRequest<SignedAddressIdentity, ChannelShareDetails> = {
+    const shareRequest: SwitchingServiceRequest<SignedAddressIdentity, ChannelShareDetails> = {
+      version: SWITCH_PROTOCOL_VERSION,
       type: 'share',
       identity: client.signedAddress,
       details: details
@@ -526,8 +515,9 @@ export class ClientTester {
         invitationId: client.shareCodeResponse.invitationId,
         memberContract: memberContract
       };
-      const request: ChannelServiceRequest<SignedKeyIdentity, ChannelAcceptDetails> = {
-        identity: client.signedIdentity,
+      const request: SwitchingServiceRequest<SignedAddressIdentity, ChannelAcceptDetails> = {
+        version: SWITCH_PROTOCOL_VERSION,
+        identity: client.signedAddress,
         type: 'accept',
         details: details
       };
@@ -555,7 +545,8 @@ export class ClientTester {
       const details: ChannelGetDetails = {
         channel: channel
       };
-      const request: ChannelServiceRequest<SignedAddressIdentity, ChannelGetDetails> = {
+      const request: SwitchingServiceRequest<SignedAddressIdentity, ChannelGetDetails> = {
+        version: SWITCH_PROTOCOL_VERSION,
         type: 'get',
         identity: client.signedAddress,
         details: details
@@ -587,7 +578,8 @@ export class ClientTester {
   private async listChannels(client: TestClient): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       const details: ChannelsListDetails = {};
-      const request: ChannelServiceRequest<SignedAddressIdentity, ChannelsListDetails> = {
+      const request: SwitchingServiceRequest<SignedAddressIdentity, ChannelsListDetails> = {
+        version: SWITCH_PROTOCOL_VERSION,
         type: 'list',
         identity: client.signedAddress,
         details: details
@@ -659,7 +651,8 @@ export class ClientTester {
       const details: ChannelDeleteDetails = {
         channel: client.channelResponse.channelAddress
       };
-      const request: ChannelServiceRequest<SignedAddressIdentity, ChannelDeleteDetails> = {
+      const request: SwitchingServiceRequest<SignedAddressIdentity, ChannelDeleteDetails> = {
+        version: SWITCH_PROTOCOL_VERSION,
         type: 'delete',
         identity: client.signedAddress,
         details: details
@@ -699,8 +692,8 @@ export class ClientTester {
       response.status(404).send("No such client");
       return;
     }
-    await this.fetchBank(client);
-    await this.openBankAccount(client);
+    await this.getBankProvider(client);
+    await this.registerWithBank(client);
     response.end();
   }
 
@@ -741,13 +734,13 @@ export class ClientTester {
     response.end();
   }
 
-  private async fetchBank(client: TestClient): Promise<void> {
+  private async getBankProvider(client: TestClient): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      const bankUrl = url.resolve(configuration.get('baseClientUri'), '/channel-bank.json');
+      const bankUrl = url.resolve(configuration.get('baseClientUri'), '/channels-bank.json');
       this.restClient.get(bankUrl, (data: any, bankResponse: Response) => {
         if (bankResponse.statusCode === 200) {
           console.log("TestClient: bank information", JSON.stringify(data));
-          client.bankResponse = data as ChannelBankDescription;
+          client.bankResponse = data as BankServiceDescription;
           console.log("Bank Description Response --------------------------------------------------------------------------");
           console.log(JSON.stringify(client.bankResponse, null, 2));
           console.log("Bank Description Response --------------------------------------------------------------------------");
@@ -760,10 +753,11 @@ export class ClientTester {
     });
   }
 
-  private async openBankAccount(client: TestClient): Promise<void> {
-    const details: BankOpenAccountDetails = {};
-    const request: BankServiceRequest<SignedKeyIdentity, BankOpenAccountDetails> = {
-      type: 'open-account',
+  private async registerWithBank(client: TestClient): Promise<void> {
+    const details: BankRegisterUserDetails = {};
+    const request: BankServiceRequest<SignedKeyIdentity, BankRegisterUserDetails> = {
+      version: BANK_PROTOCOL_VERSION,
+      type: 'register-user',
       identity: client.signedIdentity,
       details: details
     };
@@ -773,11 +767,11 @@ export class ClientTester {
         "Content-Type": "application/json"
       }
     };
-    console.log("TestClient: Opening bank account...");
+    console.log("TestClient: Registering bank account...");
     return new Promise<void>((resolve, reject) => {
-      this.restClient.post(client.bankResponse.serviceEndpoints.restServiceUrl, args, (data: any, openAccountResponse: Response) => {
-        if (openAccountResponse.statusCode === 200) {
-          client.bankAccountResponse = data as BankOpenAccountResponse;
+      this.restClient.post(client.bankResponse.serviceEndpoints.restServiceUrl, args, (data: any, registerResponse: Response) => {
+        if (registerResponse.statusCode === 200) {
+          client.bankAccountResponse = data as BankRegisterUserResponse;
           console.log("TestClient: account opened", JSON.stringify(client.bankAccountResponse));
           console.log("Open Account Request --------------------------------------------------------------------------");
           console.log(JSON.stringify(request, null, 2));
@@ -786,8 +780,8 @@ export class ClientTester {
           console.log("Open Account --------------------------------------------------------------------------");
           resolve();
         } else {
-          console.log("TestClient: Failed", openAccountResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject(openAccountResponse.statusCode);
+          console.log("TestClient: Failed", registerResponse.statusCode, new TextDecoder('utf-8').decode(data));
+          reject(registerResponse.statusCode);
         }
       });
     });
@@ -796,6 +790,7 @@ export class ClientTester {
   private async getBankAccount(client: TestClient): Promise<void> {
     const details: BankGetAccountDetails = {};
     const request: BankServiceRequest<SignedAddressIdentity, BankGetAccountDetails> = {
+      version: BANK_PROTOCOL_VERSION,
       type: 'get-account',
       identity: client.signedAddress,
       details: details
@@ -835,6 +830,7 @@ export class ClientTester {
       requestReference: reference
     };
     const request: BankServiceRequest<SignedAddressIdentity, BankTransferDetails> = {
+      version: BANK_PROTOCOL_VERSION,
       type: 'transfer',
       identity: client.signedAddress,
       details: details
@@ -855,7 +851,7 @@ export class ClientTester {
           console.log("Transfer Response Response --------------------------------------------------------------------------");
           console.log(JSON.stringify(data, null, 2));
           console.log("Transfer Receipt Decoded Response --------------------------------------------------------------------------");
-          console.log(JSON.stringify(ChannelIdentityUtils.decode(transfer.signedReceipts[0].signedReceipt, client.bankResponse.bank.publicKey, Date.now()), null, 2));
+          console.log(JSON.stringify(ChannelIdentityUtils.decode(transfer.signedReceipts[0].signedReceipt, client.bankResponse.service.publicKey, Date.now()), null, 2));
           console.log("Transfer --------------------------------------------------------------------------");
           resolve();
         } else {

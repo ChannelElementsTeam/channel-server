@@ -1,8 +1,9 @@
 import { Cursor, MongoClient, Db, Collection } from "mongodb";
 
-import { ChannelRecord, ChannelMemberRecord, ChannelInvitation, MessageRecord, RegistrationRecord, SmsBlockRecord, BankAccountRecord, BankTransactionRecord, BankAccountTransactionRecord, BankInfo } from "./interfaces/db-records";
+import { ChannelRecord, ChannelMemberRecord, ChannelInvitation, MessageRecord, SmsBlockRecord, BankAccountRecord, BankTransactionRecord, BankAccountTransactionRecord, BankInfo, SwitchRegistrationRecord } from "./interfaces/db-records";
 import { configuration } from "./configuration";
-import { ChannelContractDetails, FullIdentity, MemberContractDetails, SignedKeyIdentity, NotificationSettings, KeyIdentity, BankAccountInformation, SignedBankReceipt } from "channels-common";
+import { ChannelContractDetails, FullIdentity, MemberContractDetails, SignedKeyIdentity, NotificationSettings, KeyIdentity } from "channels-common";
+import { BankAccountInformation, SignedBankReceipt } from "channels-common/bin/channels-common";
 
 export class Database {
   private db: Db;
@@ -10,7 +11,7 @@ export class Database {
   private channelMembers: Collection;
   private invitations: Collection;
   private messages: Collection;
-  private registrations: Collection;
+  private switchRegistrations: Collection;
   private smsBlocks: Collection;
 
   private bankAccounts: Collection;
@@ -29,7 +30,7 @@ export class Database {
     await this.initializeChannelMembers();
     await this.initializeInvitations();
     await this.initializeMessages();
-    await this.initializeRegistrations();
+    await this.initializeSwitchRegistrations();
     await this.initializeSmsBlocks();
     await this.initializeBankAccounts();
     await this.initializeBankTransactions();
@@ -62,10 +63,10 @@ export class Database {
     await this.messages.createIndex({ channelAddress: 1, timestamp: -1 });
   }
 
-  private async initializeRegistrations(): Promise<void> {
-    this.registrations = this.db.collection('registrations');
-    await this.registrations.createIndex({ address: 1 }, { unique: true });
-    await this.registrations.createIndex({ address: 1, status: 1, lastActive: -1 });
+  private async initializeSwitchRegistrations(): Promise<void> {
+    this.switchRegistrations = this.db.collection('switchRegistrations');
+    await this.switchRegistrations.createIndex({ address: 1 }, { unique: true });
+    await this.switchRegistrations.createIndex({ address: 1, status: 1, lastActive: -1 });
   }
 
   private async initializeSmsBlocks(): Promise<void> {
@@ -310,9 +311,9 @@ export class Database {
     return await this.messages.count(query);
   }
 
-  async insertRegistration(address: string, signedIdentity: SignedKeyIdentity, identity: KeyIdentity, lastActive: number, created: number, status: string, loanBalance: number, balance: number, timezone?: string, notifications?: NotificationSettings): Promise<RegistrationRecord> {
+  async insertSwitchRegistration(address: string, signedIdentity: SignedKeyIdentity, identity: KeyIdentity, lastActive: number, created: number, status: string, loanBalance: number, balance: number, timezone?: string, notifications?: NotificationSettings): Promise<SwitchRegistrationRecord> {
     const now = Date.now();
-    const record: RegistrationRecord = {
+    const record: SwitchRegistrationRecord = {
       address: address,
       signedIdentity: signedIdentity,
       identity: identity,
@@ -328,15 +329,15 @@ export class Database {
     if (notifications) {
       record.notifications = notifications;
     }
-    await this.registrations.insert(record);
+    await this.switchRegistrations.insert(record);
     return record;
   }
 
-  async findRegistration(address: string): Promise<RegistrationRecord> {
-    return await this.registrations.findOne<RegistrationRecord>({ address: address });
+  async findSwitchRegistration(address: string): Promise<SwitchRegistrationRecord> {
+    return await this.switchRegistrations.findOne<SwitchRegistrationRecord>({ address: address });
   }
 
-  async updateRegistrationSettings(registration: RegistrationRecord, timezone?: string, notifications?: NotificationSettings): Promise<void> {
+  async updateSwitchRegistrationSettings(registration: SwitchRegistrationRecord, timezone?: string, notifications?: NotificationSettings): Promise<void> {
     if (!timezone && !notifications) {
       return;
     }
@@ -349,29 +350,29 @@ export class Database {
       update.notifications = notifications;
       registration.notifications = notifications;
     }
-    await this.registrations.update({ address: registration.address }, { $set: update });
+    await this.switchRegistrations.update({ address: registration.address }, { $set: update });
   }
 
-  async updateRegistrationBalance(address: string, incrementLoanBalance: number, incrementBalance: number): Promise<void> {
-    const update: any = {};
-    if (incrementLoanBalance) {
-      update.loanBalance = incrementLoanBalance;
-    }
-    if (incrementBalance) {
-      update.balance = incrementBalance;
-    }
-    await this.registrations.update({ address: address }, { $inc: update });
+  // async updateBankRegistrationBalance(address: string, incrementLoanBalance: number, incrementBalance: number): Promise<void> {
+  //   const update: any = {};
+  //   if (incrementLoanBalance) {
+  //     update.loanBalance = incrementLoanBalance;
+  //   }
+  //   if (incrementBalance) {
+  //     update.balance = incrementBalance;
+  //   }
+  //   await this.bankAccounts.update({ address: address }, { $inc: update });
+  // }
+
+  async updateSwitchRegistrationLastActive(address: string): Promise<void> {
+    await this.switchRegistrations.update({ address: address }, { $set: { lastActive: Date.now() } });
   }
 
-  async updateRegistrationLastActive(address: string): Promise<void> {
-    await this.registrations.update({ address: address }, { $set: { lastActive: Date.now() } });
+  async updateSwitchRegistrationStatus(address: string, status: string): Promise<void> {
+    await this.switchRegistrations.update({ address: address }, { $set: { status: status } });
   }
 
-  async updateRegistrationStatus(address: string, status: string): Promise<void> {
-    await this.registrations.update({ address: address }, { $set: { status: status } });
-  }
-
-  async updateRegistrationLastNotificationSent(address: string): Promise<void> {
+  async updateSwitchRegistrationLastNotificationSent(address: string): Promise<void> {
     const now = Date.now();
     await this.channelMembers.update({
       address: address

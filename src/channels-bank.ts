@@ -3,17 +3,19 @@ import { Request, Response } from 'express';
 import * as net from 'net';
 import { configuration } from "./configuration";
 import * as url from 'url';
-import { ChannelBankDescription, BANKING_PROTOCOL, BankServiceEndpoints, BankServiceRequest, SignedAddressIdentity, SignedKeyIdentity, BankOpenAccountDetails, ChannelIdentityUtils, FullIdentity, KeyIdentity, AddressIdentity, BankGetAccountDetails, BankTransferDetails, BankOpenAccountResponse, BankAccountInformation, BankTransferResponse, KeyInfo, BankTransferReceipt, BankGetAccountResponse } from 'channels-common';
+import { BankServiceEndpoints, BankServiceRequest, SignedAddressIdentity, SignedKeyIdentity, ChannelIdentityUtils, FullIdentity, KeyIdentity, AddressIdentity, BankGetAccountDetails, BankTransferDetails, BankTransferResponse, KeyInfo, BankTransferReceipt, BankGetAccountResponse, CHANNELS_BANK_PROTOCOL, BankServiceDescription, BankRegisterUserDetails } from 'channels-common';
 import { BankAccountRecord, BankInfo } from "./interfaces/db-records";
 import { db } from "./db";
 import * as uuid from "uuid";
 import { Utils } from "./utils";
+import { BankAccountInformation } from "channels-common/bin/channels-common";
 
 const DYNAMIC_BASE = '/d';
 const MINIMUM_ACCOUNT_BALANCE = -10;
 const BANK_ID = 'main';
+const BANK_PROTOCOL_VERSION = 1;
 
-export class ChannelBank {
+export class ChannelsBank {
   private app: express.Application;
   private providerUrl: string;
   private homeUrl: string;
@@ -25,7 +27,7 @@ export class ChannelBank {
 
   constructor(app: express.Application, server: net.Server) {
     this.app = app;
-    this.providerUrl = url.resolve(configuration.get('baseClientUri'), "/channel-elements.json");
+    this.providerUrl = url.resolve(configuration.get('baseClientUri'), "/channels-bank.json");
     this.homeUrl = configuration.get('baseClientUri');
     this.restBaseUrl = configuration.get('baseClientUri');
     this.bankUrl = this.getServicesList().descriptionUrl;
@@ -51,7 +53,7 @@ export class ChannelBank {
   }
 
   private registerHandlers(restRelativeBaseUrl: string): void {
-    this.app.get('/channel-bank.json', (request: Request, response: Response) => {
+    this.app.get('/channels-bank.json', (request: Request, response: Response) => {
       void this.handleDescriptionRequest(request, response);
     });
     this.app.post(restRelativeBaseUrl + '/bank', (request: Request, response: Response) => {
@@ -61,9 +63,13 @@ export class ChannelBank {
 
   private async handleDescriptionRequest(request: Request, response: Response): Promise<void> {
     console.log("ChannelBank.handleDescriptionRequest");
-    const reply: ChannelBankDescription = {
-      protocol: BANKING_PROTOCOL,
-      bank: {
+    const reply: BankServiceDescription = {
+      protocol: CHANNELS_BANK_PROTOCOL,
+      version: {
+        current: BANK_PROTOCOL_VERSION,
+        min: BANK_PROTOCOL_VERSION
+      },
+      service: {
         name: "Channel Elements Bank",
         logo: url.resolve(configuration.get('baseClientUri'), '/s/logo.png'),
         homepage: configuration.get('baseClientUri'),
@@ -98,8 +104,8 @@ export class ChannelBank {
       return;
     }
     switch (serviceRequest.type) {
-      case 'open-account':
-        await this.handleOpenAccountRequest(request, response);
+      case 'register-user':
+        await this.handleRegisterUserRequest(request, response);
         break;
       case 'get-account':
         await this.handleGetAccountRequest(request, response);
@@ -113,9 +119,9 @@ export class ChannelBank {
     }
   }
 
-  private async handleOpenAccountRequest(request: Request, response: Response): Promise<void> {
+  private async handleRegisterUserRequest(request: Request, response: Response): Promise<void> {
     console.log("ChannelBank.handleOpenAccountRequest");
-    const openRequest = request.body as BankServiceRequest<SignedKeyIdentity, BankOpenAccountDetails>;
+    const openRequest = request.body as BankServiceRequest<SignedKeyIdentity, BankRegisterUserDetails>;
     const fullIdentity = await this.validateFullIdentity(openRequest.identity, response);
     if (!fullIdentity) {
       return;

@@ -12,18 +12,19 @@ import { TextDecoder, TextEncoder } from 'text-encoding';
 
 import { TransportServer, TransportEventHandler, MessageHandlingDirective, ControlMessageDirective } from './transport-server';
 import { db } from "./db";
-import { ChannelMemberRecord, ChannelRecord, MessageRecord, ChannelInvitation, RegistrationRecord, SmsBlockRecord } from './interfaces/db-records';
+import { ChannelMemberRecord, ChannelRecord, MessageRecord, ChannelInvitation, SmsBlockRecord, SwitchRegistrationRecord } from './interfaces/db-records';
 import { Utils } from "./utils";
 import { configuration } from "./configuration";
 
 import {
   ChannelDeletedNotificationDetails, PingRequestDetails, ControlChannelMessage, ErrorDetails, HistoryMessageDetails, HistoryRequestDetails, HistoryResponseDetails, LeaveRequestDetails,
   JoinNotificationDetails, ChannelParticipantInfo, JoinResponseDetails, JoinRequestDetails, LeaveNotificationDetails, ChannelMessageUtils, ChannelMessage, ChannelContractDetails, ChannelOptions,
-  BasicChannelInformation, ChannelInformation, ChannelMemberInfo, MemberContractDetails, ProviderServiceEndpoints, ChannelServiceRequest, ChannelCreateDetails, ChannelShareDetails, ChannelGetDetails,
-  ChannelAcceptDetails, ChannelsListDetails, ChannelDeleteDetails, ChannelShareCodeResponse, CHANNELS_PROTOCOL, ChannelShareResponse, ChannelDeleteResponse, ChannelsListResponse, ChannelServiceDescription,
-  AddressIdentity, ChannelIdentityUtils, FullIdentity, KeyIdentity, SignedAddressIdentity, SignedKeyIdentity, ChannelParticipantIdentity, GetRegistrationDetails, GetRegistrationResponse, UpdateRegistrationDetails, NotificationSettings, NotificationTiming
+  BasicChannelInformation, ChannelInformation, ChannelMemberInfo, MemberContractDetails, ChannelCreateDetails, ChannelShareDetails, ChannelGetDetails,
+  ChannelAcceptDetails, ChannelsListDetails, ChannelDeleteDetails, ChannelShareCodeResponse, ChannelShareResponse, ChannelDeleteResponse, ChannelsListResponse,
+  AddressIdentity, ChannelIdentityUtils, FullIdentity, KeyIdentity, SignedAddressIdentity, SignedKeyIdentity, ChannelParticipantIdentity, NotificationSettings, CHANNELS_SWITCH_PROTOCOL, SwitchServiceDescription, SwitchingServiceRequest, GetSwitchRegistrationDetails, GetSwitchRegistrationResponse, UpdateSwitchRegistrationDetails, SwitchNotificationTiming, SwitchRegisterUserDetails, SwitchRegisterUserResponse, SwitchRegistrationDetails
 } from "channels-common";
 import { smsManager, SmsInboundMessageHandler } from "./sms-manager";
+import { ServiceEndpoints } from "channels-common/bin/channels-common";
 
 const TOKEN_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const MAX_HISTORY_BUFFERED_SIZE = 50000;
@@ -34,7 +35,8 @@ const MINIMUM_CHANNEL_NOTIFICATION_ACTIVE_INTERVAL = 1000 * 60 * 10;
 const MINIMUM_CHANNEL_NOTIFICATION_INACTIVE_INTERVAL = 1000 * 60 * 60;
 const DEFAULT_MIN_SMS_INTERVAL_MINS = 60;
 
-export class ChannelServer implements TransportEventHandler, SmsInboundMessageHandler {
+const SWITCH_PROTOCOL_VERSION = 1;
+export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageHandler {
   private providerUrl: string;
   private homeUrl: string;
   private restBaseUrl: string;
@@ -58,7 +60,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
 
   constructor(app: express.Application, server: net.Server) {
     this.app = app;
-    this.providerUrl = url.resolve(configuration.get('baseClientUri'), "/channel-elements.json");
+    this.providerUrl = url.resolve(configuration.get('baseClientUri'), "/channels-switch.json");
     this.homeUrl = configuration.get('baseClientUri');
     this.restBaseUrl = configuration.get('baseClientUri');
     this.restRelativeBaseUrl = DYNAMIC_BASE;
@@ -89,7 +91,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
   }
 
   private registerHandlers(restRelativeBaseUrl: string): void {
-    this.app.get('/channel-elements.json', (request: Request, response: Response) => {
+    this.app.get('/channels-switch.json', (request: Request, response: Response) => {
       void this.handleProviderRequest(request, response);
     });
     this.app.post(restRelativeBaseUrl + '/service', (request: Request, response: Response) => {
@@ -102,14 +104,18 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
 
   private async handleProviderRequest(request: Request, response: Response): Promise<void> {
     console.log("ChannelServer.handleProviderRequest");
-    const reply: ChannelServiceDescription = {
-      protocol: CHANNELS_PROTOCOL,
-      provider: {
+    const reply: SwitchServiceDescription = {
+      protocol: CHANNELS_SWITCH_PROTOCOL,
+      version: {
+        current: SWITCH_PROTOCOL_VERSION,
+        min: SWITCH_PROTOCOL_VERSION
+      },
+      service: {
         name: "Channel Elements",
         logo: url.resolve(configuration.get('baseClientUri'), '/s/logo.png'),
         homepage: configuration.get('baseClientUri'),
-        account: null,
-        bankUrl: null,
+        bankAccount: null,
+        address: null,
         publicKey: null,
         details: {}
       },
@@ -134,8 +140,8 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
     return result;
   }
 
-  getServicesList(): ProviderServiceEndpoints {
-    const result: ProviderServiceEndpoints = {
+  getServicesList(): ServiceEndpoints {
+    const result: ServiceEndpoints = {
       descriptionUrl: this.providerUrl,
       homeUrl: this.homeUrl,
       restServiceUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/service'),
@@ -144,12 +150,15 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
   }
 
   private async handleServiceRequest(request: Request, response: Response): Promise<void> {
-    const serviceRequest = request.body as ChannelServiceRequest<SignedAddressIdentity | SignedKeyIdentity, any>;
+    const serviceRequest = request.body as SwitchingServiceRequest<SignedAddressIdentity | SignedKeyIdentity, any>;
     if (!serviceRequest || !serviceRequest.type || !serviceRequest.identity) {
       response.status(400).send("Invalid request structure");
       return;
     }
     switch (serviceRequest.type) {
+      case 'register-user':
+        await this.handleRegisterUserRequest(request, response);
+        break;
       case 'create':
         await this.handleCreateRequest(request, response);
         break;
@@ -180,26 +189,52 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
     }
   }
 
-  private async ensureRegistration(address: string, signedIdentity: SignedKeyIdentity, identity: KeyIdentity): Promise<void> {
-    const registration = await db.findRegistration(address);
+  private async ensureRegistration(address: string, signedIdentity: SignedKeyIdentity, identity: KeyIdentity): Promise<SwitchRegistrationRecord> {
+    const registration = await db.findSwitchRegistration(address);
     const now = Date.now();
     if (registration) {
       if (registration.status !== 'active') {
-        await db.updateRegistrationStatus(address, 'active');
+        await db.updateSwitchRegistrationStatus(address, 'active');
+        registration.status = 'active';
       }
-    } else {
-      await db.insertRegistration(address, signedIdentity, identity, now, now, 'active', -100, 100);
+      return registration;
     }
+    return await db.insertSwitchRegistration(address, signedIdentity, identity, now, now, 'active', -100, 100);
   }
   private async updateLastActive(address: string): Promise<void> {
-    await db.updateRegistrationLastActive(address);
+    await db.updateSwitchRegistrationLastActive(address);
+  }
+
+  private async handleRegisterUserRequest(request: Request, response: Response): Promise<void> {
+    console.log("ChannelServer.handleRegisterUserRequest");
+    const registerRequest = request.body as SwitchingServiceRequest<SignedKeyIdentity, SwitchRegisterUserDetails>;
+    const fullIdentity = await this.validateFullIdentity(registerRequest.identity, response);
+    if (!fullIdentity) {
+      return;
+    }
+    // console.log("Full Identity---------------------------------------------");
+    // console.log(JSON.stringify(fullIdentity, null, 2));
+    // console.log("Full Identity---------------------------------------------");
+
+    let registration = await this.ensureRegistration(fullIdentity.address, registerRequest.identity, fullIdentity);
+    registration = await this.updateRegistration(fullIdentity, registration, registerRequest.details);
+
+    const reply: SwitchRegisterUserResponse = {};
+    if (registration.notifications) {
+      reply.notifications = registration.notifications;
+    }
+    if (registration.timezone) {
+      reply.timezone = registration.timezone;
+    }
+    response.json(reply);
+    console.log("Switch: user registered");
   }
 
   private async handleCreateRequest(request: Request, response: Response): Promise<void> {
     console.log("ChannelServer.handleCreateRequest");
-    const createRequest = request.body as ChannelServiceRequest<SignedKeyIdentity, ChannelCreateDetails>;
-    const fullIdentity = await this.validateFullIdentity(createRequest.identity, response);
-    if (!fullIdentity) {
+    const createRequest = request.body as SwitchingServiceRequest<SignedAddressIdentity, ChannelCreateDetails>;
+    const registration = await this.validateAddressIdentity(createRequest.identity, Date.now(), response);
+    if (!registration) {
       return;
     }
     // console.log("Full Identity---------------------------------------------");
@@ -212,47 +247,48 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
     if (!this.validateMemberContract(createRequest.details.memberContract, response)) {
       return;
     }
-    await this.ensureRegistration(fullIdentity.address, createRequest.identity, fullIdentity);
-    await this.updateLastActive(fullIdentity.address);
-    await this.createChannel(createRequest.identity, fullIdentity, createRequest.details, request, response);
+    await this.updateLastActive(registration.address);
+    await this.createChannel(registration, createRequest.details, request, response);
   }
 
   private async handleShareRequest(request: Request, response: Response): Promise<void> {
     console.log("ChannelServer.handleShareRequest");
-    const shareRequest = request.body as ChannelServiceRequest<SignedAddressIdentity, ChannelShareDetails>;
-    const channelMemberRecord = await this.getChannelMemberRecord(shareRequest.details.channel, shareRequest.identity.address);
+    const shareRequest = request.body as SwitchingServiceRequest<SignedAddressIdentity, ChannelShareDetails>;
+    const registration = await this.validateAddressIdentity(shareRequest.identity, Date.now(), response);
+    if (!registration) {
+      return;
+    }
+    const channelMemberRecord = await this.getChannelMemberRecord(shareRequest.details.channel, registration.address);
     if (!channelMemberRecord) {
       response.status(403).send("You are not a member of this channel");
       return;
     }
-    if (!this.validateAddressIdentity(shareRequest.identity, channelMemberRecord, response)) {
-      return;
-    }
-    const channelRecord = await this.getChannelRecord(channelMemberRecord.channelAddress);
-    await this.updateLastActive(channelMemberRecord.identity.address);
+    const channelRecord = await this.getChannelRecord(shareRequest.details.channel);
+    await this.updateLastActive(registration.address);
     await this.shareChannel(channelRecord, channelMemberRecord, shareRequest.details, request, response);
   }
 
   private async handleGetRequest(request: Request, response: Response): Promise<void> {
     console.log("ChannelServer.handleGetRequest");
-    const getRequest = request.body as ChannelServiceRequest<SignedAddressIdentity, ChannelGetDetails>;
+    const getRequest = request.body as SwitchingServiceRequest<SignedAddressIdentity, ChannelGetDetails>;
+    const registration = await this.validateAddressIdentity(getRequest.identity, Date.now(), response);
+    if (!registration) {
+      return;
+    }
     const channelMemberRecord = await this.getChannelMemberRecord(getRequest.details.channel, getRequest.identity.address);
     if (!channelMemberRecord) {
       response.status(403).send("You are not a member of this channel");
       return;
     }
-    if (!this.validateAddressIdentity(getRequest.identity, channelMemberRecord, response)) {
-      return;
-    }
     const channelRecord = await this.getChannelRecord(getRequest.details.channel);
-    await this.updateLastActive(channelMemberRecord.identity.address);
+    await this.updateLastActive(registration.address);
     await this.getChannel(channelRecord, channelMemberRecord, request, response);
   }
   private async handleAcceptRequest(request: Request, response: Response): Promise<void> {
     console.log("ChannelServer.handleAcceptRequest");
-    const acceptRequest = request.body as ChannelServiceRequest<SignedKeyIdentity, ChannelAcceptDetails>;
-    const fullIdentity = await this.validateFullIdentity(acceptRequest.identity, response);
-    if (!fullIdentity) {
+    const acceptRequest = request.body as SwitchingServiceRequest<SignedAddressIdentity, ChannelAcceptDetails>;
+    const registration = await this.validateAddressIdentity(acceptRequest.identity, Date.now(), response);
+    if (!registration) {
       return;
     }
     const invitation = await this.getInvitation(acceptRequest.details.invitationId);
@@ -267,27 +303,26 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
     if (!await this.validateMemberContract(acceptRequest.details.memberContract, response)) {
       return;
     }
-    const existingMemberRecord = await this.getChannelMemberRecord(channelRecord.channelAddress, fullIdentity.address);
+    const existingMemberRecord = await this.getChannelMemberRecord(channelRecord.channelAddress, registration.address);
     if (existingMemberRecord) {
       response.status(409).send("You are already a member of this channel");
       return;
     }
-    await this.ensureRegistration(fullIdentity.address, acceptRequest.identity, fullIdentity);
-    await this.updateLastActive(fullIdentity.address);
-    await this.acceptInvitation(acceptRequest.identity, fullIdentity, invitation, channelRecord, acceptRequest.details, request, response);
+    await this.updateLastActive(registration.address);
+    await this.acceptInvitation(registration, invitation, channelRecord, acceptRequest.details, request, response);
   }
   private async handleDeleteRequest(request: Request, response: Response): Promise<void> {
     console.log("ChannelServer.handleDeleteRequest");
-    const deleteRequest = request.body as ChannelServiceRequest<SignedAddressIdentity, ChannelDeleteDetails>;
-    const channelMemberRecord = await this.getChannelMemberRecord(deleteRequest.details.channel, deleteRequest.identity.address);
+    const deleteRequest = request.body as SwitchingServiceRequest<SignedAddressIdentity, ChannelDeleteDetails>;
+    const registration = await this.validateAddressIdentity(deleteRequest.identity, Date.now(), response);
+    if (!registration) {
+      return;
+    }
+    const channelMemberRecord = await this.getChannelMemberRecord(deleteRequest.details.channel, registration.address);
     if (!channelMemberRecord) {
       response.status(403).send("You are not a member of this channel");
       return;
     }
-    if (!this.validateAddressIdentity(deleteRequest.identity, channelMemberRecord, response)) {
-      return;
-    }
-
     const channelRecord = await this.getChannelRecord(deleteRequest.details.channel);
     if (channelRecord.creatorAddress !== channelMemberRecord.identity.address) {
       response.status(403).send("Only channel creator can delete");
@@ -299,37 +334,27 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
 
   private async handleListRequest(request: Request, response: Response): Promise<void> {
     console.log("ChannelServer.handleListRequest");
-    const listRequest = request.body as ChannelServiceRequest<SignedAddressIdentity, ChannelsListDetails>;
-    const channelMemberRecord = await db.getLatestChannelMemberRecord(listRequest.identity.address, 'active');
-    if (!channelMemberRecord) {
-      response.status(403).send("Unknown member address");
+    const listRequest = request.body as SwitchingServiceRequest<SignedAddressIdentity, ChannelsListDetails>;
+    const registration = await this.validateAddressIdentity(listRequest.identity, Date.now(), response);
+    if (!registration) {
       return;
     }
-    const identity = this.validateAddressIdentity(listRequest.identity, channelMemberRecord, response);
-    if (!identity) {
-      return;
-    }
-    await this.listChannels(identity, listRequest.details, request, response);
+    await this.listChannels(registration, listRequest.details, request, response);
   }
 
   private async handleGetRegistration(request: Request, response: Response): Promise<void> {
     console.log("ChannelServer.handleGetRegistration");
-    const getRegistrationRequest = request.body as ChannelServiceRequest<SignedKeyIdentity, GetRegistrationDetails>;
-    const identity = this.validateKeyIdentity(getRegistrationRequest.identity, response);
-    if (!identity) {
+    const getRegistrationRequest = request.body as SwitchingServiceRequest<SignedAddressIdentity, GetSwitchRegistrationDetails>;
+    const registration = await this.validateAddressIdentity(getRegistrationRequest.identity, Date.now(), response);
+    if (!registration) {
       return;
     }
-    const registration = await db.findRegistration(identity.address);
-    if (!registration || registration.status !== 'active') {
-      response.status(404).send("No matching address registered");
-      return;
-    }
-    await this.updateLastActive(identity.address);
+    await this.updateLastActive(registration.address);
     await this.completeGetRegistration(registration, request, response);
   }
 
-  private async completeGetRegistration(registration: RegistrationRecord, request: Request, response: Response): Promise<void> {
-    const reply: GetRegistrationResponse = {};
+  private async completeGetRegistration(registration: SwitchRegistrationRecord, request: Request, response: Response): Promise<void> {
+    const reply: GetSwitchRegistrationResponse = {};
     if (registration.timezone) {
       reply.timezone = registration.timezone;
     }
@@ -340,56 +365,55 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
   }
   private async handleUpdateRegistration(request: Request, response: Response): Promise<void> {
     console.log("ChannelServer.handleUpdateRegistration");
-    const updateRegistrationRequest = request.body as ChannelServiceRequest<SignedKeyIdentity, UpdateRegistrationDetails>;
-    if (!updateRegistrationRequest || !updateRegistrationRequest.identity || !updateRegistrationRequest.details) {
+    const updateRegistrationRequest = request.body as SwitchingServiceRequest<SignedAddressIdentity, UpdateSwitchRegistrationDetails>;
+    if (!updateRegistrationRequest || !updateRegistrationRequest.identity || !updateRegistrationRequest.identity.address || !updateRegistrationRequest.details) {
       response.status(400).send("Missing or invalid update request");
       return;
     }
-    const identity = this.validateKeyIdentity(updateRegistrationRequest.identity, response);
-    if (!identity) {
+    const registration = await this.validateAddressIdentity(updateRegistrationRequest.identity, Date.now(), response);
+    if (!registration) {
       return;
     }
-    const registration = await db.findRegistration(identity.address);
-    let settings: NotificationSettings = {};
-    if (registration && registration.notifications) {
-      settings = registration.notifications;
-    }
-    if (updateRegistrationRequest.details && updateRegistrationRequest.details.notifications) {
-      if (updateRegistrationRequest.details.notifications.minimumSmsIntervalMinutes) {
-        settings.minimumSmsIntervalMinutes = updateRegistrationRequest.details.notifications.minimumSmsIntervalMinutes;
-      }
-      if (updateRegistrationRequest.details.notifications.minimumWebPushIntervalMinutes) {
-        settings.minimumWebPushIntervalMinutes = updateRegistrationRequest.details.notifications.minimumWebPushIntervalMinutes;
-      }
-      if (updateRegistrationRequest.details.notifications.smsNumber) {
-        settings.smsNumber = updateRegistrationRequest.details.notifications.smsNumber;
-      }
-      if (typeof updateRegistrationRequest.details.notifications.suspended === 'boolean') {
-        settings.suspended = updateRegistrationRequest.details.notifications.suspended;
-      }
-      if (updateRegistrationRequest.details.notifications.timing) {
-        settings.timing = updateRegistrationRequest.details.notifications.timing;
-      }
-      if (updateRegistrationRequest.details.notifications.webPushNotifications) {
-        settings.webPushNotifications = updateRegistrationRequest.details.notifications.webPushNotifications;
-      }
-      if (updateRegistrationRequest.details.notifications.smsNotificationCallbackUrlTemplate) {
-        settings.smsNotificationCallbackUrlTemplate = updateRegistrationRequest.details.notifications.smsNotificationCallbackUrlTemplate;
-      }
-      if (typeof updateRegistrationRequest.details.notifications.minimumChannelActiveNotificationIntervalMinutes === 'number') {
-        settings.minimumChannelActiveNotificationIntervalMinutes = updateRegistrationRequest.details.notifications.minimumChannelActiveNotificationIntervalMinutes;
-      }
-      if (typeof updateRegistrationRequest.details.notifications.minimumChannelInactiveNotificationIntervalMinutes === 'number') {
-        settings.minimumChannelInactiveNotificationIntervalMinutes = updateRegistrationRequest.details.notifications.minimumChannelInactiveNotificationIntervalMinutes;
-      }
-    }
-    if (registration) {
-      await db.updateRegistrationSettings(registration, updateRegistrationRequest.details.timezone, settings);
-    } else {
-      await db.insertRegistration(identity.address, updateRegistrationRequest.identity, identity, 0, Date.now(), 'active', -100, 100, updateRegistrationRequest.details.timezone, settings);
-    }
-    await this.updateLastActive(identity.address);
     await this.completeGetRegistration(registration, request, response);
+  }
+
+  private async updateRegistration(identity: AddressIdentity, record: SwitchRegistrationRecord, updated: SwitchRegistrationDetails): Promise<SwitchRegistrationRecord> {
+    let settings: NotificationSettings = {};
+    if (record.notifications) {
+      settings = record.notifications;
+    }
+    if (updated && updated.notifications) {
+      if (updated.notifications.minimumSmsIntervalMinutes) {
+        settings.minimumSmsIntervalMinutes = updated.notifications.minimumSmsIntervalMinutes;
+      }
+      if (updated.notifications.minimumWebPushIntervalMinutes) {
+        settings.minimumWebPushIntervalMinutes = updated.notifications.minimumWebPushIntervalMinutes;
+      }
+      if (updated.notifications.smsNumber) {
+        settings.smsNumber = updated.notifications.smsNumber;
+      }
+      if (typeof updated.notifications.suspended === 'boolean') {
+        settings.suspended = updated.notifications.suspended;
+      }
+      if (updated.notifications.timing) {
+        settings.timing = updated.notifications.timing;
+      }
+      if (updated.notifications.webPushNotifications) {
+        settings.webPushNotifications = updated.notifications.webPushNotifications;
+      }
+      if (updated.notifications.smsNotificationCallbackUrlTemplate) {
+        settings.smsNotificationCallbackUrlTemplate = updated.notifications.smsNotificationCallbackUrlTemplate;
+      }
+      if (typeof updated.notifications.minimumChannelActiveNotificationIntervalMinutes === 'number') {
+        settings.minimumChannelActiveNotificationIntervalMinutes = updated.notifications.minimumChannelActiveNotificationIntervalMinutes;
+      }
+      if (typeof updated.notifications.minimumChannelInactiveNotificationIntervalMinutes === 'number') {
+        settings.minimumChannelInactiveNotificationIntervalMinutes = updated.notifications.minimumChannelInactiveNotificationIntervalMinutes;
+      }
+    }
+    await db.updateSwitchRegistrationSettings(record, updated.timezone, settings);
+    await this.updateLastActive(identity.address);
+    return record;
   }
 
   private validateFullIdentity(signedIdentity: SignedKeyIdentity, response: Response): FullIdentity {
@@ -409,20 +433,21 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
     return keyIdentity;
   }
 
-  private validateAddressIdentity(signedIdentity: SignedAddressIdentity, channelMemberRecord: ChannelMemberRecord, response: Response): AddressIdentity {
-    if (!channelMemberRecord) {
-      response.status(400).send("Invalid channel or member");
-      return null;
-    }
+  private async validateAddressIdentity(signedIdentity: SignedAddressIdentity, expectedTimestamp: number, response: Response): Promise<SwitchRegistrationRecord> {
     if (!signedIdentity || !signedIdentity.signature || !signedIdentity.address) {
       response.status(400).send("Invalid identity");
       return null;
     }
-    const addressIdentity = ChannelIdentityUtils.decode<AddressIdentity>(signedIdentity.signature, channelMemberRecord.identity.publicKey, Date.now());
+    const registration = await db.findSwitchRegistration(signedIdentity.address);
+    if (!registration || registration.status !== 'active') {
+      response.status(401).send("No such registered identity");
+      return null;
+    }
+    const addressIdentity = ChannelIdentityUtils.decode<AddressIdentity>(signedIdentity.signature, registration.identity.publicKey, expectedTimestamp);
     if (!addressIdentity || !addressIdentity.address || addressIdentity.address !== signedIdentity.address) {
       response.status(403).send("Invalid identity signature or signedAt");
     }
-    return addressIdentity;
+    return registration;
   }
 
   private async getChannelRecord(channelAddress: string): Promise<ChannelRecord> {
@@ -467,29 +492,29 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
     return true;
   }
 
-  private async createChannel(signedIdentity: SignedKeyIdentity, identity: FullIdentity, details: ChannelCreateDetails, request: Request, response: Response): Promise<void> {
+  private async createChannel(registration: SwitchRegistrationRecord, details: ChannelCreateDetails, request: Request, response: Response): Promise<void> {
     // This is assigning the transport responsibility for this channel to my own server.  When running with multiple
     // servers, this means that I'm balancing the switching load over those servers, too.  We just have to make sure
     // that REST requests that need to be handled by the server doing the transport arrive on the correct server.
     const channelAddress = ChannelIdentityUtils.generateValidAddress();
     this.fillAllOptions(details.channelContract.serviceContract.options);
-    const channelRecord = await db.insertChannel(channelAddress, details.name, identity.address, this.transportUrl, details.channelContract, 'active');
+    const channelRecord = await db.insertChannel(channelAddress, details.name, registration.address, this.transportUrl, details.channelContract, 'active');
     const now = Date.now();
     const channelInfo: ChannelInfo = {
       code: this.allocateChannelCode(),
       channelAddress: channelRecord.channelAddress,
-      memberAddress: identity.address,
+      memberAddress: registration.address,
       participantsByCode: {},
       participantsByAddress: {},
       lastAllocatedCode: 0,
       contract: channelRecord.contract,
-      creatorAddress: identity.address
+      creatorAddress: registration.address
     };
     this.channelInfoByAddress[channelRecord.channelAddress] = channelInfo;
     this.channelAddressByCode[channelInfo.code] = channelRecord.channelAddress;
-    const channelMemberRecord = await db.insertChannelMember(channelAddress, signedIdentity, identity, details.memberContract, 'active');
+    const channelMemberRecord = await db.insertChannelMember(channelAddress, registration.signedIdentity, registration.identity, details.memberContract, 'active');
     const reply = await this.getChannel(channelRecord, channelMemberRecord, request, response);
-    console.log("ChannelServer: channel created", identity.address, channelAddress);
+    console.log("Switch: channel created", registration.address, channelAddress);
   }
 
   private async shareChannel(channelRecord: ChannelRecord, channelMemberRecord: ChannelMemberRecord, details: ChannelShareDetails, request: Request, response: Response): Promise<void> {
@@ -506,7 +531,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
     const reply: ChannelShareResponse = {
       shareCodeUrl: url.resolve(this.restBaseUrl, '/i/' + invitation.id)
     };
-    console.log("ChannelServer: invitation created", channelMemberRecord.identity.address, channelRecord.channelAddress);
+    console.log("Switch: invitation created", channelMemberRecord.identity.address, channelRecord.channelAddress);
     response.json(reply);
   }
 
@@ -537,8 +562,8 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
     response.json(reply);
   }
 
-  private async acceptInvitation(signedIdentity: SignedKeyIdentity, identity: FullIdentity, invitation: ChannelInvitation, channelRecord: ChannelRecord, details: ChannelAcceptDetails, request: Request, response: Response): Promise<void> {
-    const channelMemberRecord = await db.insertChannelMember(channelRecord.channelAddress, signedIdentity, identity, details.memberContract, 'active');
+  private async acceptInvitation(registration: SwitchRegistrationRecord, invitation: ChannelInvitation, channelRecord: ChannelRecord, details: ChannelAcceptDetails, request: Request, response: Response): Promise<void> {
+    const channelMemberRecord = await db.insertChannelMember(channelRecord.channelAddress, registration.signedIdentity, registration.identity, details.memberContract, 'active');
     await this.getChannel(channelRecord, channelMemberRecord, request, response);
   }
 
@@ -547,7 +572,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
     await db.updateChannelMemberStatusForAllMembers(channelRecord.channelAddress, 'deleted');
     const deleteResponse: ChannelDeleteResponse = {};
     response.json(deleteResponse);
-    console.log("ChannelServer: channel deleted", channelMemberRecord.identity.address, channelRecord.channelAddress);
+    console.log("Switch: channel deleted", channelMemberRecord.identity.address, channelRecord.channelAddress);
     void this.processDeletedChannels();
   }
 
@@ -576,8 +601,8 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
     }
   }
 
-  private async listChannels(identity: AddressIdentity, details: ChannelsListDetails, request: Request, response: Response): Promise<void> {
-    const memberAddress = identity.address;
+  private async listChannels(registration: SwitchRegistrationRecord, details: ChannelsListDetails, request: Request, response: Response): Promise<void> {
+    const memberAddress = registration.address;
     const lastActiveBefore = details.lastActiveBefore ? details.lastActiveBefore : 0;
     const limit = details.limit ? details.limit : 50;
     const count = await db.countChannelMembersByAddress(memberAddress, 'active', lastActiveBefore);
@@ -615,7 +640,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
         reply.channels.push(channelDetails);
       }
     }
-    console.log("ChannelServer: channel list fetched", memberAddress, lastActiveBefore, limit, count);
+    console.log("Switch: channel list fetched", memberAddress, lastActiveBefore, limit, count);
     response.json(reply);
   }
 
@@ -635,14 +660,14 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
       }
       const channelInfo = await this.getBasicChannelInfo(channelRecord);
       const reply: ChannelShareCodeResponse = {
-        protocol: CHANNELS_PROTOCOL,
+        protocol: CHANNELS_SWITCH_PROTOCOL,
         serviceEndpoints: this.getServicesList(),
         invitationId: invitation.id,
         channelInfo: channelInfo,
         extensions: invitation.extensions,
       };
       response.json(reply);
-      console.log("ChannelServer: invitation fetched", shareId, invitation.channelAddress);
+      console.log("Switch: invitation fetched", shareId, invitation.channelAddress);
     } else {
       response.render('sharecode', {
         helpers: {
@@ -685,7 +710,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
     //   this.socketIdsByUserId[user.id] = socketIds;
     // }
     // socketIds.push(socketId);
-    console.log("ChannelServer: socket connected", socketId);
+    console.log("Switch: socket connected", socketId);
     return socketId;
   }
 
@@ -693,7 +718,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
     const socketInfo = this.socketInfoById[socketId];
     if (socketInfo) {
       socketInfo.isOpen = false;
-      console.log("ChannelServer: handleSocketClosed", socketId);
+      console.log("Switch: handleSocketClosed", socketId);
       delete this.socketInfoById[socketId];
       for (const channelAddress of Object.keys(socketInfo.participantCodeByChannelAddress)) {
         const participantCode = socketInfo.participantCodeByChannelAddress[channelAddress];
@@ -706,7 +731,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
         }
       }
     } else {
-      console.error("ChannelServer: handleSocketClosed: socket missing");
+      console.error("Switch: handleSocketClosed: socket missing");
     }
   }
 
@@ -728,12 +753,12 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
           const message = ChannelMessageUtils.serializeControlMessage(null, 'leave-notification', notificationDetails);
           await this.transport.deliverMessage(message, p.socketId);
           count++;
-          console.log("ChannelServer: Sending leave-notification", p.socketId, notificationDetails.channelAddress, notificationDetails.participantAddress);
+          console.log("Switch: Sending leave-notification", p.socketId, notificationDetails.channelAddress, notificationDetails.participantAddress);
         }
       }
     }
     if (Object.keys(channel.participantsByCode).length === 0) {
-      console.log("ChannelServer: Last participant left channel.  Removing active channel.", channel.channelAddress, channel.code);
+      console.log("Switch: Last participant left channel.  Removing active channel.", channel.channelAddress, channel.code);
       delete this.channelAddressByCode[channel.code];
       delete this.channelInfoByAddress[channel.channelAddress];
     }
@@ -796,7 +821,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
         }
       }
     }
-    console.log("ChannelServer: Forwarding channel message to " + result.forwardMessageToSockets.length + " sockets", socket.socketId, channelAddress);
+    console.log("Switch: Forwarding channel message to " + result.forwardMessageToSockets.length + " sockets", socket.socketId, channelAddress);
     if (!messageInfo.priority) {
       // Don't consider notifications for real-time (media) messages
       await this.considerNotifications(channelInfo, participant);
@@ -820,7 +845,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
       if (!channelMemberRecord.memberServices || !channelMemberRecord.memberServices.subscribe) {
         continue;
       }
-      const registration = await db.findRegistration(channelMemberRecord.identity.address);
+      const registration = await db.findSwitchRegistration(channelMemberRecord.identity.address);
       if (!registration) {
         continue;
       }
@@ -852,7 +877,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
     }
   }
 
-  private isBlackedOut(timing: NotificationTiming, timezone: string): boolean {
+  private isBlackedOut(timing: SwitchNotificationTiming, timezone: string): boolean {
     if (!timing || !timezone) {
       return false;
     }
@@ -877,7 +902,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
     return false;
   }
 
-  private async sendChannelActivityNotification(channelInfo: ChannelInfo, channelMemberRecord: ChannelMemberRecord, registration: RegistrationRecord, sender: ParticipantInfo): Promise<void> {
+  private async sendChannelActivityNotification(channelInfo: ChannelInfo, channelMemberRecord: ChannelMemberRecord, registration: SwitchRegistrationRecord, sender: ParticipantInfo): Promise<void> {
     let message = '';
     const senderName = sender.memberIdentity.name ? sender.memberIdentity.name : "Someone";
     const channelRecord = await db.findChannelByAddress(channelInfo.channelAddress);
@@ -893,13 +918,13 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
       message += "\n\nSend STOP to block notifications.";
     }
     await smsManager.send(registration.notifications.smsNumber, message);
-    await db.updateRegistrationLastNotificationSent(registration.address);
+    await db.updateSwitchRegistrationLastNotificationSent(registration.address);
     await db.updateChannelMemberLastNotification(channelMemberRecord.channelAddress, channelMemberRecord.identity.address);
   }
 
   private async handleReceivedControlMessage(messageInfo: ChannelMessage, socket: SocketInfo): Promise<MessageHandlingDirective> {
     if (messageInfo.controlMessagePayload && messageInfo.controlMessagePayload.jsonMessage && messageInfo.controlMessagePayload.jsonMessage.type !== 'ping-reply') {
-      console.log("ChannelServer: Control message received", socket.socketId, messageInfo.controlMessagePayload ? JSON.stringify(messageInfo.controlMessagePayload.jsonMessage) : null);
+      console.log("Switch: Control message received", socket.socketId, messageInfo.controlMessagePayload ? JSON.stringify(messageInfo.controlMessagePayload.jsonMessage) : null);
     }
     // These are messages from the client to the server to perform control functions, such as joining or reconnecting to a channel.
     // The format of all control messages is a JSON-encoded payload.
@@ -1058,7 +1083,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
       }
     }
     await this.updateLastActive(memberIdentity.address);
-    console.log("ChannelServer: Completed join and notified " + notificationCount, socket.socketId, controlRequest.requestId, channelInfo.channelAddress, channelInfo.code, participant.memberIdentity.address, participant.code);
+    console.log("Switch: Completed join and notified " + notificationCount, socket.socketId, controlRequest.requestId, channelInfo.channelAddress, channelInfo.code, participant.memberIdentity.address, participant.code);
     return result;
   }
 
@@ -1107,7 +1132,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
     };
     result.deliverControlMessages.push(leaveResponseDirective);
     await this.updateLastActive(participant.memberIdentity.address);
-    console.log("ChannelServer: Completed leave and notified " + notificationCount, socket.socketId, controlRequest.requestId, channelInfo.channelAddress, channelInfo.code, participant.memberIdentity.address, participant.code);
+    console.log("Switch: Completed leave and notified " + notificationCount, socket.socketId, controlRequest.requestId, channelInfo.channelAddress, channelInfo.code, participant.memberIdentity.address, participant.code);
     return result;
   }
 
@@ -1221,7 +1246,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
     if (controlRequest.requestId === 'p' + socket.pingId) {
       socket.lastPingReply = Date.now();
     } else {
-      console.warn("ChannelServer: received ping-reply with unexpected requestId.  Ignoring", controlRequest.requestId, socket.socketId);
+      console.warn("Switch: received ping-reply with unexpected requestId.  Ignoring", controlRequest.requestId, socket.socketId);
     }
     return result;
   }
@@ -1283,7 +1308,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
       controlMessage: message,
       socketId: socketId
     };
-    console.log("ChannelServer: Error message", socketId, errorCode, errorMessage, controlRequest ? controlRequest.requestId : null, controlRequest ? controlRequest.type : null);
+    console.log("Switch: Error message", socketId, errorCode, errorMessage, controlRequest ? controlRequest.requestId : null, controlRequest ? controlRequest.type : null);
     return result;
   }
 
@@ -1296,7 +1321,7 @@ export class ChannelServer implements TransportEventHandler, SmsInboundMessageHa
     for (const socketId of Object.keys(this.socketInfoById)) {
       const socket = this.socketInfoById[socketId];
       if (socket.isOpen && now - socket.lastPingSent > this.pingTimeout && socket.lastPingReply < socket.lastPingSent) {
-        console.warn("ChannelServer: Timeout waiting for ping-reply", socket.socketId);
+        console.warn("Switch: Timeout waiting for ping-reply", socket.socketId);
         this.transport.closeSocket(socket.socketId);
       } else if (socket.isOpen && now - socket.lastPingSent > this.pingInterval) {
         process.nextTick(() => {

@@ -1,6 +1,6 @@
 {
   "name": "channel-server",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Channel Elements Server",
   "main": "src/index.js",
   "scripts": {
@@ -20,7 +20,7 @@
     "basic-auth": "^1.1.0",
     "basic-authorization-header": "^0.2.7",
     "body-parser": "^1.17.2",
-    "channels-common": "https://github.com/ChannelElementsTeam/channels-common.git",
+    "channels-common": "git+https://github.com/ChannelElementsTeam/channels-common.git",
     "compression": "^1.6.2",
     "cookie-parser": "^1.4.3",
     "express": "^4.15.3",
