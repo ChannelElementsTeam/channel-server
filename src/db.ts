@@ -1,9 +1,10 @@
 import { Cursor, MongoClient, Db, Collection } from "mongodb";
 
-import { ChannelRecord, ChannelMemberRecord, ChannelInvitation, MessageRecord, SmsBlockRecord, BankAccountRecord, BankTransactionRecord, BankAccountTransactionRecord, BankInfo, SwitchRegistrationRecord } from "./interfaces/db-records";
+import { ChannelRecord, ChannelMemberRecord, ChannelInvitation, MessageRecord, SmsBlockRecord, BankAccountRecord, BankTransactionRecord, BankAccountTransactionRecord, BankInfo, SwitchRegistrationRecord, CardRegistryRegistrationRecord, CardRegistryCardRecord } from "./interfaces/db-records";
 import { configuration } from "./configuration";
 import { ChannelContractDetails, FullIdentity, MemberContractDetails, SignedKeyIdentity, NotificationSettings, KeyIdentity } from "channels-common";
 import { BankAccountInformation, SignedBankReceipt } from "channels-common/bin/channels-common";
+import { Utils } from "./utils";
 
 export class Database {
   private db: Db;
@@ -18,6 +19,9 @@ export class Database {
   private bankTransactions: Collection;
   private bankAccountTransactions: Collection;
   private banks: Collection;
+
+  private cardRegistryRegistrations: Collection;
+  private cardRegistryCards: Collection;
 
   async initialize(): Promise<void> {
     const serverOptions = configuration.get('mongo.serverOptions');
@@ -36,6 +40,8 @@ export class Database {
     await this.initializeBankTransactions();
     await this.initializeBankAccountTransactions();
     await this.initializeBanks();
+    await this.initializeCardRegistryRegistrations();
+    await this.initializeCardRegistryCards();
   }
 
   private async initializeChannels(): Promise<void> {
@@ -92,6 +98,21 @@ export class Database {
   private async initializeBanks(): Promise<void> {
     this.banks = this.db.collection('banks');
     await this.banks.createIndex({ id: 1 }, { unique: true });
+  }
+
+  private async initializeCardRegistryRegistrations(): Promise<void> {
+    this.cardRegistryRegistrations = this.db.collection('cardRegistryRegistrations');
+    await this.cardRegistryRegistrations.createIndex({ address: 1 }, { unique: true });
+    await this.cardRegistryRegistrations.createIndex({ address: 1, status: 1, lastActive: -1 });
+  }
+
+  private async initializeCardRegistryCards(): Promise<void> {
+    this.cardRegistryCards = this.db.collection('cardRegistryCards');
+    await this.cardRegistryCards.createIndex({ entryId: 1 }, { unique: true });
+    await this.cardRegistryCards.createIndex({ approved: 1, ranking: -1 });
+    await this.cardRegistryCards.createIndex({ approved: 1, searchText: 1, ranking: -1 });
+    await this.cardRegistryCards.createIndex({ approved: 1, searchText: 1, categoryCaseInsensitive: 1, ranking: -1 });
+    await this.cardRegistryCards.createIndex({ approved: 1, categoryCaseInsensitive: 1, ranking: -1 });
   }
 
   async insertChannel(channelAddress: string, name: string, creatorAddress: string, transportUrl: string, contract: ChannelContractDetails, status: string): Promise<ChannelRecord> {
@@ -470,6 +491,61 @@ export class Database {
 
   async findBank(id: string): Promise<BankInfo> {
     return await this.banks.findOne({ id: id });
+  }
+
+  async insertCardRegistryRegistration(address: string, signedIdentity: SignedKeyIdentity, identity: KeyIdentity, lastActive: number, created: number, status: string): Promise<CardRegistryRegistrationRecord> {
+    const now = Date.now();
+    const record: CardRegistryRegistrationRecord = {
+      address: address,
+      signedIdentity: signedIdentity,
+      identity: identity,
+      lastActive: lastActive,
+      created: created,
+      status: status
+    };
+    await this.cardRegistryRegistrations.insert(record);
+    return record;
+  }
+
+  async findCardRegistryRegistration(address: string): Promise<CardRegistryRegistrationRecord> {
+    return await this.cardRegistryRegistrations.findOne<CardRegistryRegistrationRecord>({ address: address });
+  }
+
+  async updateCardRegistryRegistrationLastActive(address: string): Promise<void> {
+    await this.cardRegistryRegistrations.update({ address: address }, { $set: { lastActive: Date.now() } });
+  }
+
+  async updateCardRegistryRegistrationStatus(address: string, status: string): Promise<void> {
+    await this.cardRegistryRegistrations.update({ address: address }, { $set: { status: status } });
+  }
+
+  async insertCardRegistryCard(card: CardRegistryCardRecord): Promise<void> {
+    await this.cardRegistryCards.insert(card);
+  }
+
+  async findCardRegistryCard(entryId: string): Promise<CardRegistryCardRecord> {
+    return await this.cardRegistryCards.findOne<CardRegistryCardRecord>({ entryId: entryId });
+  }
+
+  async searchCardRegistryCard(searchString: string, categoryPrefix: string, limit = 100): Promise<CardRegistryCardRecord[]> {
+    if (!searchString && !categoryPrefix) {
+      return await this.cardRegistryCards.find<CardRegistryCardRecord>({ approved: true }).sort({ ranking: -1 }).limit(limit).toArray();
+    } else {
+      const query: any = { approved: true };
+      if (searchString) {
+        query.searchText = {
+          $text: {
+            $search: searchString,
+            $language: 'en'
+          }
+        };
+      }
+      if (categoryPrefix) {
+        categoryPrefix = Utils.escapeRegex(categoryPrefix);
+        query.categoryCaseInsensitive = { $regex: '^' + categoryPrefix.toLowerCase() };
+      }
+      return await this.cardRegistryCards.find<CardRegistryCardRecord>(query).sort({ ranking: -1 }).limit(limit).toArray();
+    }
   }
 }
 

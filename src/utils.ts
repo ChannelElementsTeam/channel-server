@@ -64,4 +64,7 @@ export class Utils {
     return phoneRegex.test(phoneNumber);
   }
 
+  static escapeRegex(value: string): string {
+    return value.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&");
+  }
 }

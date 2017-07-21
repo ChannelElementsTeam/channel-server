@@ -18,6 +18,8 @@ export interface SwitchRegistrationRecord extends RegistrationRecord {
   lastNotification: number;
 }
 
+export interface CardRegistryRegistrationRecord extends RegistrationRecord { }
+
 export interface SmsBlockRecord {
   smsNumber: string;
   blocked: boolean;
@@ -104,4 +106,36 @@ export interface BankInfo {
   privateKey: string;
   name: string;
   created: number;
+}
+
+export interface CardRegistryCardRecord {
+  entryId: string;
+  added: number;
+  approved: boolean;
+  pending: boolean;
+  rejectionReason: string;
+  cardSourceWithVersion: string;
+  lastSubmitted: number;
+  lastSubmittedByAddress: string;
+  firstApproved: number;
+  lastApprovedVersion: string;
+  lastApproved: number;
+  searchText: string;
+  cardName: string;
+  category: string;
+  categoryCaseInsensitive: string;
+  websiteUrl: string;
+  description: string;
+  author: string;
+  iconUrl: string;
+  price: number;
+  bankAccount: BankAccountInformation;
+  averageRating: number;
+  ranking: number;  // assigned by registry
+  purchaseCount: number;
+  purchasersCount: number;
+  numberReviews: number;
+  requestsPayment: boolean;
+  offersPayment: boolean;
+  collaborative: boolean;
 }

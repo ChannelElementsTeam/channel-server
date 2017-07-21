@@ -128,7 +128,7 @@ export class ChannelsBank {
     }
     const existing = await this.getAccountRecord(fullIdentity.address);
     if (existing) {
-      response.status(409).send("You already have an account");
+      await this.respondWithAccount(existing, response);
       return;
     }
     await this.openAccount(openRequest.identity, fullIdentity, response);
