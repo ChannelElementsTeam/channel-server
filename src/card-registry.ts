@@ -3,7 +3,7 @@ import { Request, Response } from 'express';
 import * as net from 'net';
 import { configuration } from "./configuration";
 import * as url from 'url';
-import { BankServiceEndpoints, BankServiceRequest, SignedAddressIdentity, SignedKeyIdentity, ChannelIdentityUtils, FullIdentity, KeyIdentity, AddressIdentity, BankGetAccountDetails, BankTransferDetails, BankTransferResponse, KeyInfo, BankTransferReceipt, BankGetAccountResponse, CardRegistryServiceDescription, CHANNELS_CARD_REGISTRY_PROTOCOL, ServiceEndpoints, CardRegistryServiceRequest, CardRegistryRegisterUserDetails, CardRegistryRegisterUserResponse, CardRegistrySearchDetails, CardRegistrySearchResponse, CardRegistryEntry } from 'channels-common';
+import { BankServiceEndpoints, BankServiceRequest, SignedAddressIdentity, SignedKeyIdentity, ChannelIdentityUtils, KeyIdentity, AddressIdentity, BankGetAccountDetails, BankTransferDetails, BankTransferResponse, KeyInfo, BankTransferReceipt, BankGetAccountResponse, CardRegistryServiceDescription, CHANNELS_CARD_REGISTRY_PROTOCOL, ServiceEndpoints, CardRegistryServiceRequest, CardRegistryRegisterUserDetails, CardRegistryRegisterUserResponse, CardRegistrySearchDetails, CardRegistrySearchResponse, CardRegistryEntry } from 'channels-common';
 import { BankAccountRecord, BankInfo, CardRegistryRegistrationRecord } from "./interfaces/db-records";
 import { db } from "./db";
 import * as uuid from "uuid";
@@ -64,7 +64,7 @@ export class CardRegistry {
         logo: url.resolve(configuration.get('baseClientUri'), '/s/logo.png'),
         homepage: "https://github.com/ChannelElementsTeam/channel-server",
         version: "0.1.0",
-        extensions: {}
+        implementationExtensions: {}
       },
       serviceEndpoints: this.getServicesList()
     };
@@ -102,16 +102,16 @@ export class CardRegistry {
   private async handleRegisterUserRequest(request: Request, response: Response): Promise<void> {
     console.log("CardRegistry.handleRegisterUserRequest");
     const openRequest = request.body as CardRegistryServiceRequest<SignedKeyIdentity, CardRegistryRegisterUserDetails>;
-    const fullIdentity = await this.validateFullIdentity(openRequest.identity, response);
-    if (!fullIdentity) {
+    const keyIdentity = await this.validateKeyIdentity(openRequest.identity, response);
+    if (!keyIdentity) {
       return;
     }
-    const existing = await this.getUserRegistration(fullIdentity.address);
+    const existing = await this.getUserRegistration(keyIdentity.address);
     if (existing) {
       await this.respondWithRegistration(existing, response);
       return;
     }
-    await this.registerUser(openRequest.identity, fullIdentity, response);
+    await this.registerUser(openRequest.identity, keyIdentity, response);
   }
 
   private async handleSearchRequest(request: Request, response: Response): Promise<void> {
@@ -133,6 +133,9 @@ export class CardRegistry {
       const item: CardRegistryEntry = {
         entryId: match.entryId,
         approved: match.approved,
+        pending: match.pending,
+        rejectionReason: match.rejectionReason,
+        categories: match.categories,
         cardSourceWithVersion: match.cardSourceWithVersion,
         lastSubmitted: match.lastSubmitted,
         lastSubmittedByAddress: match.lastSubmittedByAddress,
@@ -159,16 +162,12 @@ export class CardRegistry {
     response.json(reply);
   }
 
-  private validateFullIdentity(signedIdentity: SignedKeyIdentity, response: Response): FullIdentity {
-    return this.validateKeyIdentity(signedIdentity, response) as FullIdentity;
-  }
-
   private validateKeyIdentity(signedIdentity: SignedKeyIdentity, response: Response): KeyIdentity {
     if (!signedIdentity || !signedIdentity.signature || !signedIdentity.publicKey) {
       response.status(400).send("Invalid identity");
       return null;
     }
-    const keyIdentity = ChannelIdentityUtils.decode<KeyIdentity>(signedIdentity.signature, signedIdentity.publicKey, Date.now());
+    const keyIdentity = ChannelIdentityUtils.decodeSignedKey(signedIdentity, Date.now());
     if (!keyIdentity || !keyIdentity.publicKey || keyIdentity.publicKey !== signedIdentity.publicKey) {
       response.status(400).send("Invalid identity signature or signedAt");
       return null;
@@ -209,9 +208,9 @@ export class CardRegistry {
     response.json(reply);
   }
 
-  private async registerUser(signedIdentity: SignedKeyIdentity, fullIdentity: FullIdentity, response: Response): Promise<void> {
+  private async registerUser(signedIdentity: SignedKeyIdentity, identity: KeyIdentity, response: Response): Promise<void> {
     const now = Date.now();
-    const registration = await db.insertCardRegistryRegistration(fullIdentity.address, signedIdentity, fullIdentity, now, now, 'active');
+    const registration = await db.insertCardRegistryRegistration(identity.address, signedIdentity, identity, now, now, 'active');
     await this.respondWithRegistration(registration, response);
   }
 

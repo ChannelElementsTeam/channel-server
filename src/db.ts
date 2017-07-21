@@ -2,7 +2,7 @@ import { Cursor, MongoClient, Db, Collection } from "mongodb";
 
 import { ChannelRecord, ChannelMemberRecord, ChannelInvitation, MessageRecord, SmsBlockRecord, BankAccountRecord, BankTransactionRecord, BankAccountTransactionRecord, BankInfo, SwitchRegistrationRecord, CardRegistryRegistrationRecord, CardRegistryCardRecord } from "./interfaces/db-records";
 import { configuration } from "./configuration";
-import { ChannelContractDetails, FullIdentity, MemberContractDetails, SignedKeyIdentity, NotificationSettings, KeyIdentity } from "channels-common";
+import { ChannelContractDetails, MemberContractDetails, SignedKeyIdentity, NotificationSettings, KeyIdentity, MemberIdentityInfo } from "channels-common";
 import { BankAccountInformation, SignedBankReceipt } from "channels-common/bin/channels-common";
 import { Utils } from "./utils";
 
@@ -111,7 +111,7 @@ export class Database {
     await this.cardRegistryCards.createIndex({ entryId: 1 }, { unique: true });
     await this.cardRegistryCards.createIndex({ approved: 1, ranking: -1 });
     await this.cardRegistryCards.createIndex({ approved: 1, searchText: 1, ranking: -1 });
-    await this.cardRegistryCards.createIndex({ approved: 1, searchText: 1, categoryCaseInsensitive: 1, ranking: -1 });
+    await this.cardRegistryCards.createIndex({ approved: 1, searchText: 1, categoriesCaseInsensitive: 1, ranking: -1 });
     await this.cardRegistryCards.createIndex({ approved: 1, categoryCaseInsensitive: 1, ranking: -1 });
   }
 
@@ -151,12 +151,13 @@ export class Database {
     await this.channels.update({ channelAddress: channelAddress }, { $set: { lastActivity: at } });
   }
 
-  async insertChannelMember(channelAddress: string, signedIdentity: SignedKeyIdentity, identity: FullIdentity, memberServicesContract: MemberContractDetails, status: string): Promise<ChannelMemberRecord> {
+  async insertChannelMember(channelAddress: string, signedIdentity: SignedKeyIdentity, identity: KeyIdentity, memberIdentity: MemberIdentityInfo, memberServicesContract: MemberContractDetails, status: string): Promise<ChannelMemberRecord> {
     const now = Date.now();
     const record: ChannelMemberRecord = {
       channelAddress: channelAddress,
       signedIdentity: signedIdentity,
       identity: identity,
+      memberIdentity: memberIdentity,
       memberServices: memberServicesContract,
       added: now,
       status: status,
@@ -414,7 +415,7 @@ export class Database {
     return await this.smsBlocks.findOne<SmsBlockRecord>({ smsNumber: smsNumber });
   }
 
-  async insertBankAccount(signedIdentity: SignedKeyIdentity, identity: FullIdentity, status: string): Promise<BankAccountRecord> {
+  async insertBankAccount(signedIdentity: SignedKeyIdentity, identity: KeyIdentity, status: string): Promise<BankAccountRecord> {
     const now = Date.now();
     const record: BankAccountRecord = {
       signedIdentity: signedIdentity,

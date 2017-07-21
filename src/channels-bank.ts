@@ -3,7 +3,7 @@ import { Request, Response } from 'express';
 import * as net from 'net';
 import { configuration } from "./configuration";
 import * as url from 'url';
-import { BankServiceEndpoints, BankServiceRequest, SignedAddressIdentity, SignedKeyIdentity, ChannelIdentityUtils, FullIdentity, KeyIdentity, AddressIdentity, BankGetAccountDetails, BankTransferDetails, BankTransferResponse, KeyInfo, BankTransferReceipt, BankGetAccountResponse, CHANNELS_BANK_PROTOCOL, BankServiceDescription, BankRegisterUserDetails } from 'channels-common';
+import { BankServiceEndpoints, BankServiceRequest, SignedAddressIdentity, SignedKeyIdentity, ChannelIdentityUtils, KeyIdentity, AddressIdentity, BankGetAccountDetails, BankTransferDetails, BankTransferResponse, KeyInfo, BankTransferReceipt, BankGetAccountResponse, CHANNELS_BANK_PROTOCOL, BankServiceDescription, BankRegisterUserDetails } from 'channels-common';
 import { BankAccountRecord, BankInfo } from "./interfaces/db-records";
 import { db } from "./db";
 import * as uuid from "uuid";
@@ -81,7 +81,7 @@ export class ChannelsBank {
         logo: url.resolve(configuration.get('baseClientUri'), '/s/logo.png'),
         homepage: "https://github.com/ChannelElementsTeam/channel-server",
         version: "0.1.0",
-        extensions: {}
+        implementationExtensions: {}
       },
       serviceEndpoints: this.getServicesList()
     };
@@ -122,16 +122,16 @@ export class ChannelsBank {
   private async handleRegisterUserRequest(request: Request, response: Response): Promise<void> {
     console.log("ChannelBank.handleOpenAccountRequest");
     const openRequest = request.body as BankServiceRequest<SignedKeyIdentity, BankRegisterUserDetails>;
-    const fullIdentity = await this.validateFullIdentity(openRequest.identity, response);
-    if (!fullIdentity) {
+    const keyIdentity = await this.validateKeyIdentity(openRequest.identity, response);
+    if (!keyIdentity) {
       return;
     }
-    const existing = await this.getAccountRecord(fullIdentity.address);
+    const existing = await this.getAccountRecord(keyIdentity.address);
     if (existing) {
       await this.respondWithAccount(existing, response);
       return;
     }
-    await this.openAccount(openRequest.identity, fullIdentity, response);
+    await this.openAccount(openRequest.identity, keyIdentity, response);
   }
 
   private async handleGetAccountRequest(request: Request, response: Response): Promise<void> {
@@ -166,16 +166,12 @@ export class ChannelsBank {
     await this.transfer(accountRecord, transferRequest.details, response);
   }
 
-  private validateFullIdentity(signedIdentity: SignedKeyIdentity, response: Response): FullIdentity {
-    return this.validateKeyIdentity(signedIdentity, response) as FullIdentity;
-  }
-
   private validateKeyIdentity(signedIdentity: SignedKeyIdentity, response: Response): KeyIdentity {
     if (!signedIdentity || !signedIdentity.signature || !signedIdentity.publicKey) {
       response.status(400).send("Invalid identity");
       return null;
     }
-    const keyIdentity = ChannelIdentityUtils.decode<KeyIdentity>(signedIdentity.signature, signedIdentity.publicKey, Date.now());
+    const keyIdentity = ChannelIdentityUtils.decodeSignedKey(signedIdentity, Date.now());
     if (!keyIdentity || !keyIdentity.publicKey || keyIdentity.publicKey !== signedIdentity.publicKey) {
       response.status(401).send("Invalid identity signature or signedAt");
       return null;
@@ -210,8 +206,8 @@ export class ChannelsBank {
     return null;
   }
 
-  private async openAccount(signedIdentity: SignedKeyIdentity, fullIdentity: FullIdentity, response: Response): Promise<void> {
-    const account = await db.insertBankAccount(signedIdentity, fullIdentity, 'active');
+  private async openAccount(signedIdentity: SignedKeyIdentity, identity: KeyIdentity, response: Response): Promise<void> {
+    const account = await db.insertBankAccount(signedIdentity, identity, 'active');
     await this.respondWithAccount(account, response);
   }
 

@@ -1,5 +1,5 @@
 
-import { ChannelContractDetails, MemberContractDetails, FullIdentity, SignedKeyIdentity, NotificationSettings, KeyIdentity } from "channels-common";
+import { ChannelContractDetails, MemberContractDetails, SignedKeyIdentity, NotificationSettings, KeyIdentity, MemberIdentityInfo } from "channels-common";
 import { BankAccountInformation, SignedBankReceipt } from "channels-common/bin/channels-common";
 
 export interface RegistrationRecord {
@@ -42,7 +42,8 @@ export interface ChannelRecord {
 export interface ChannelMemberRecord {
   channelAddress: string;
   signedIdentity: SignedKeyIdentity;
-  identity: FullIdentity;
+  identity: KeyIdentity;
+  memberIdentity: MemberIdentityInfo;
   memberServices: MemberContractDetails;
   added: number;
   status: string;
@@ -122,8 +123,8 @@ export interface CardRegistryCardRecord {
   lastApproved: number;
   searchText: string;
   cardName: string;
-  category: string;
-  categoryCaseInsensitive: string;
+  categories: string[];
+  categoriesCaseInsensitive: string[];
   websiteUrl: string;
   description: string;
   author: string;

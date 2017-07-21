@@ -8,7 +8,7 @@ import { ChannelShareCodeResponse, ChannelShareResponse, ChannelsListResponse, C
 import { JoinResponseDetails, ControlChannelMessage, JoinRequestDetails, HistoryRequestDetails, LeaveRequestDetails } from "channels-common";
 import { ChannelMessage, ChannelMessageUtils, MessageToSerialize } from "channels-common";
 import { ChannelContractDetails, ChannelInformation, MemberContractDetails } from "channels-common";
-import { AddressIdentity, FullIdentity, ChannelIdentityUtils, KeyIdentity, SignedAddressIdentity, SignedKeyIdentity, UpdateSwitchRegistrationDetails, UpdateSwitchRegistrationResponse, BankServiceRequest, BankTransferDetails, BankTransferResponse, BankGetAccountDetails, BankGetAccountResponse, BankRegisterUserResponse, BankServiceDescription, SwitchingServiceRequest, BankRegisterUserDetails, SwitchServiceDescription } from "channels-common";
+import { AddressIdentity, ChannelIdentityUtils, KeyIdentity, SignedAddressIdentity, SignedKeyIdentity, UpdateSwitchRegistrationDetails, UpdateSwitchRegistrationResponse, BankServiceRequest, BankTransferDetails, BankTransferResponse, BankGetAccountDetails, BankGetAccountResponse, BankRegisterUserResponse, BankServiceDescription, SwitchingServiceRequest, BankRegisterUserDetails, SwitchServiceDescription, MemberIdentityInfo } from "channels-common";
 import { Utils } from "../utils";
 import { ServiceDescription, ServiceEndpoints } from "channels-common/bin/channels-common";
 const RestClient = require('node-rest-client').Client;
@@ -54,8 +54,8 @@ class TestClient {
   constructor(name: string) {
     this.privateKey = ChannelIdentityUtils.generatePrivateKey();
     const keyInfo = ChannelIdentityUtils.getKeyInfo(this.privateKey);
-    this.signedIdentity = ChannelIdentityUtils.createSignedFullIdentity(keyInfo, name, "https://example.org/pictures/" + name + ".png", "https://example.org/i/" + Utils.createToken(6), {});
-    this.signedAddress = ChannelIdentityUtils.createSignedAddressIdentity(keyInfo, keyInfo.address);
+    this.signedIdentity = ChannelIdentityUtils.createSignedKeyIdentity(keyInfo);
+    this.signedAddress = ChannelIdentityUtils.createSignedAddressIdentity(keyInfo);
   }
   private requestHandlersById: { [requestId: string]: (controlMessage: ControlChannelMessage) => Promise<void> } = {};
   async handleMessage(messageInfo: ChannelMessage): Promise<void> {
@@ -311,22 +311,24 @@ export class ClientTester {
           perMessageSent: 0,
           perMessageDelivered: 0,
           perMessageStored: 0
-        },
-        extensions: {}
+        }
       },
       participationContract: {
         type: "https://channelelements.com/contracts/participation/standard",
         cards: {
           "*": { price: 0 }
-        },
-        extensions: {}
+        }
       }
     };
     const memberContract: MemberContractDetails = {
       subscribe: true
     };
+    const memberIdentity: MemberIdentityInfo = {
+      name: name
+    };
     const details: ChannelCreateDetails = {
       channelContract: contract,
+      memberIdentity: memberIdentity,
       memberContract: memberContract
     };
     if (channelName) {
@@ -451,7 +453,7 @@ export class ClientTester {
   private async shareChannel(client: TestClient, name: string): Promise<void> {
     const details: ChannelShareDetails = {
       channel: client.channelResponse.channelAddress,
-      extensions: { name: name, sharing: true }
+      shareExtensions: { name: name, sharing: true }
     };
     const shareRequest: SwitchingServiceRequest<SignedAddressIdentity, ChannelShareDetails> = {
       version: SWITCH_PROTOCOL_VERSION,
@@ -513,6 +515,7 @@ export class ClientTester {
       };
       const details: ChannelAcceptDetails = {
         invitationId: client.shareCodeResponse.invitationId,
+        memberIdentity: { name: name },
         memberContract: memberContract
       };
       const request: SwitchingServiceRequest<SignedAddressIdentity, ChannelAcceptDetails> = {

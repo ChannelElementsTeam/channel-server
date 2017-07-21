@@ -21,7 +21,7 @@ import {
   JoinNotificationDetails, ChannelParticipantInfo, JoinResponseDetails, JoinRequestDetails, LeaveNotificationDetails, ChannelMessageUtils, ChannelMessage, ChannelContractDetails, ChannelOptions,
   BasicChannelInformation, ChannelInformation, ChannelMemberInfo, MemberContractDetails, ChannelCreateDetails, ChannelShareDetails, ChannelGetDetails,
   ChannelAcceptDetails, ChannelsListDetails, ChannelDeleteDetails, ChannelShareCodeResponse, ChannelShareResponse, ChannelDeleteResponse, ChannelsListResponse,
-  AddressIdentity, ChannelIdentityUtils, FullIdentity, KeyIdentity, SignedAddressIdentity, SignedKeyIdentity, ChannelParticipantIdentity, NotificationSettings, CHANNELS_SWITCH_PROTOCOL, SwitchServiceDescription, SwitchingServiceRequest, GetSwitchRegistrationDetails, GetSwitchRegistrationResponse, UpdateSwitchRegistrationDetails, SwitchNotificationTiming, SwitchRegisterUserDetails, SwitchRegisterUserResponse, SwitchRegistrationDetails
+  AddressIdentity, ChannelIdentityUtils, KeyIdentity, SignedAddressIdentity, SignedKeyIdentity, ChannelParticipantIdentity, NotificationSettings, CHANNELS_SWITCH_PROTOCOL, SwitchServiceDescription, SwitchingServiceRequest, GetSwitchRegistrationDetails, GetSwitchRegistrationResponse, UpdateSwitchRegistrationDetails, SwitchNotificationTiming, SwitchRegisterUserDetails, SwitchRegisterUserResponse, SwitchRegistrationDetails, MemberIdentityInfo
 } from "channels-common";
 import { smsManager, SmsInboundMessageHandler } from "./sms-manager";
 import { ServiceEndpoints } from "channels-common/bin/channels-common";
@@ -124,7 +124,7 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
         logo: url.resolve(configuration.get('baseClientUri'), '/s/logo.png'),
         homepage: "https://github.com/ChannelElementsTeam/channel-server",
         version: "0.1.0",
-        extensions: this.getServerImplementationDetails()
+        implementationExtensions: this.getServerImplementationDetails()
       },
       serviceEndpoints: this.getServicesList()
     };
@@ -208,16 +208,16 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
   private async handleRegisterUserRequest(request: Request, response: Response): Promise<void> {
     console.log("ChannelServer.handleRegisterUserRequest");
     const registerRequest = request.body as SwitchingServiceRequest<SignedKeyIdentity, SwitchRegisterUserDetails>;
-    const fullIdentity = await this.validateFullIdentity(registerRequest.identity, response);
-    if (!fullIdentity) {
+    const keyIdentity = await this.validateKeyIdentity(registerRequest.identity, response);
+    if (!keyIdentity) {
       return;
     }
     // console.log("Full Identity---------------------------------------------");
     // console.log(JSON.stringify(fullIdentity, null, 2));
     // console.log("Full Identity---------------------------------------------");
 
-    let registration = await this.ensureRegistration(fullIdentity.address, registerRequest.identity, fullIdentity);
-    registration = await this.updateRegistration(fullIdentity, registration, registerRequest.details);
+    let registration = await this.ensureRegistration(keyIdentity.address, registerRequest.identity, keyIdentity);
+    registration = await this.updateRegistration(keyIdentity, registration, registerRequest.details);
 
     const reply: SwitchRegisterUserResponse = {};
     if (registration.notifications) {
@@ -416,10 +416,6 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
     return record;
   }
 
-  private validateFullIdentity(signedIdentity: SignedKeyIdentity, response: Response): FullIdentity {
-    return this.validateKeyIdentity(signedIdentity, response) as FullIdentity;
-  }
-
   private validateKeyIdentity(signedIdentity: SignedKeyIdentity, response: Response): KeyIdentity {
     if (!signedIdentity || !signedIdentity.signature || !signedIdentity.publicKey) {
       response.status(400).send("Invalid identity");
@@ -443,7 +439,7 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
       response.status(401).send("No such registered identity");
       return null;
     }
-    const addressIdentity = ChannelIdentityUtils.decode<AddressIdentity>(signedIdentity.signature, registration.identity.publicKey, expectedTimestamp);
+    const addressIdentity = ChannelIdentityUtils.decode<AddressIdentity>(signedIdentity.signature, registration.signedIdentity.publicKey, expectedTimestamp);
     if (!addressIdentity || !addressIdentity.address || addressIdentity.address !== signedIdentity.address) {
       response.status(403).send("Invalid identity signature or signedAt");
     }
@@ -512,7 +508,7 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
     };
     this.channelInfoByAddress[channelRecord.channelAddress] = channelInfo;
     this.channelAddressByCode[channelInfo.code] = channelRecord.channelAddress;
-    const channelMemberRecord = await db.insertChannelMember(channelAddress, registration.signedIdentity, registration.identity, details.memberContract, 'active');
+    const channelMemberRecord = await db.insertChannelMember(channelAddress, registration.signedIdentity, registration.identity, details.memberIdentity, details.memberContract, 'active');
     const reply = await this.getChannel(channelRecord, channelMemberRecord, request, response);
     console.log("Switch: channel created", registration.address, channelAddress);
   }
@@ -523,7 +519,7 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
     while (count++ < 1000) {
       const invitationId = Utils.createToken(6);
       try {
-        invitation = await db.insertInvitation(invitationId, channelMemberRecord.identity.address, channelRecord.channelAddress, details.extensions);
+        invitation = await db.insertInvitation(invitationId, channelMemberRecord.identity.address, channelRecord.channelAddress, details.shareExtensions);
       } catch (err) {
         // Possible duplicate on id, so will just try again
       }
@@ -553,6 +549,7 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
     for (const member of members) {
       const m: ChannelMemberInfo = {
         identity: member.signedIdentity,
+        memberIdentity: member.memberIdentity,
         isCreator: member.identity.address === channelRecord.creatorAddress,
         memberSince: member.added,
         lastActive: member.lastActive,
@@ -563,7 +560,7 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
   }
 
   private async acceptInvitation(registration: SwitchRegistrationRecord, invitation: ChannelInvitation, channelRecord: ChannelRecord, details: ChannelAcceptDetails, request: Request, response: Response): Promise<void> {
-    const channelMemberRecord = await db.insertChannelMember(channelRecord.channelAddress, registration.signedIdentity, registration.identity, details.memberContract, 'active');
+    const channelMemberRecord = await db.insertChannelMember(channelRecord.channelAddress, registration.signedIdentity, registration.identity, details.memberIdentity, details.memberContract, 'active');
     await this.getChannel(channelRecord, channelMemberRecord, request, response);
   }
 
@@ -631,6 +628,7 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
         for (const member of members) {
           const info: ChannelMemberInfo = {
             identity: member.signedIdentity,
+            memberIdentity: member.memberIdentity,
             isCreator: member.identity.address === channelRecord.creatorAddress,
             memberSince: member.added,
             lastActive: member.lastActive,
@@ -664,7 +662,7 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
         serviceEndpoints: this.getServicesList(),
         invitationId: invitation.id,
         channelInfo: channelInfo,
-        extensions: invitation.extensions,
+        shareExtensions: invitation.extensions,
       };
       response.json(reply);
       console.log("Switch: invitation fetched", shareId, invitation.channelAddress);
@@ -737,7 +735,7 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
 
   private async handleParticipantLeft(channel: ChannelInfo, participant: ParticipantInfo, socket: SocketInfo, permanently: boolean): Promise<number> {
     delete channel.participantsByCode[participant.code];
-    delete channel.participantsByAddress[participant.memberIdentity.address];
+    delete channel.participantsByAddress[participant.identity.address];
     delete socket.participantCodeByChannelAddress[channel.channelAddress];
     let count = 0;
     if (channel.contract.serviceContract.options.topology === 'many-to-many') {
@@ -746,7 +744,7 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
           const p = channel.participantsByCode[code];
           const notificationDetails: LeaveNotificationDetails = {
             channelAddress: channel.channelAddress,
-            participantAddress: participant.memberIdentity.address,
+            participantAddress: participant.identity.address,
             participantCode: participant.code,
             permanently: permanently
           };
@@ -799,13 +797,13 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
       result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 403, "You have not been assigned this sender code on that channel on this socket", channelAddress));
       return result;  // sending with illegal sender code
     }
-    if (channelInfo.contract.serviceContract.options.topology === 'one-to-many' && participant.memberIdentity.address !== channelInfo.creatorAddress) {
+    if (channelInfo.contract.serviceContract.options.topology === 'one-to-many' && participant.identity.address !== channelInfo.creatorAddress) {
       result.deliverControlMessages.push(this.createErrorMessageDirective(null, socketId, 403, "This is a one-to-many channel.  Only the creator is allowed to send messages.", channelAddress));
       return result;
     }
     const now = Date.now();
     if (messageInfo.history && channelInfo.contract.serviceContract.options.history) {
-      await db.insertMessage(channelAddress, participant.memberIdentity.address, messageInfo.timestamp, messageInfo.serializedMessage.byteLength, messageInfo.serializedMessage);
+      await db.insertMessage(channelAddress, participant.identity.address, messageInfo.timestamp, messageInfo.serializedMessage.byteLength, messageInfo.serializedMessage);
       await db.updateChannelActivity(channelAddress, now);
       await db.updateChannelMembersChannelActivity(channelAddress, 'active', now);
     }
@@ -813,7 +811,7 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
     for (const code of Object.keys(channelInfo.participantsByCode)) {
       if (code !== messageInfo.senderCode.toString()) {
         const p = channelInfo.participantsByCode[code];
-        if (channelInfo.contract.serviceContract.options.topology === 'many-to-one' && p.memberIdentity.address !== channelInfo.creatorAddress && participant.memberIdentity.address !== channelInfo.creatorAddress) {
+        if (channelInfo.contract.serviceContract.options.topology === 'many-to-one' && p.identity.address !== channelInfo.creatorAddress && participant.identity.address !== channelInfo.creatorAddress) {
           continue;
         }
         if (p.socketId !== socketId && result.forwardMessageToSockets.indexOf(p.socketId) < 0) {
@@ -1006,11 +1004,12 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
       this.channelAddressByCode[channelInfo.code] = channelRecord.channelAddress;
     }
     const now = Date.now();
-    const memberIdentity = channelMemberRecord.identity;
+    const identity = channelMemberRecord.identity;
     await db.updateChannelMemberActive(channelMemberRecord.channelAddress, channelMemberRecord.identity.address, 'active', now, null);
     const participant: ParticipantInfo = {
       memberSignedIdentity: channelMemberRecord.signedIdentity,
-      memberIdentity: memberIdentity,
+      identity: identity,
+      memberIdentity: channelMemberRecord.memberIdentity,
       participantIdentityDetails: requestDetails.participantIdentityDetails,
       code: this.allocateParticipantCode(channelInfo),
       channelAddress: channelRecord.channelAddress,
@@ -1021,7 +1020,7 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
     };
     socket.participantCodeByChannelAddress[channelRecord.channelAddress] = participant.code.toString();
     channelInfo.participantsByCode[participant.code] = participant;
-    channelInfo.participantsByAddress[participant.memberIdentity.address] = participant;
+    channelInfo.participantsByAddress[participant.identity.address] = participant;
     const joinResponseDetails: JoinResponseDetails = {
       channelAddress: channelRecord.channelAddress,
       channelCode: channelInfo.code,
@@ -1038,13 +1037,14 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
         const p = channelInfo.participantsByCode[code];
         const pId: ChannelParticipantIdentity = {
           signedIdentity: p.memberSignedIdentity,
+          memberIdentity: p.memberIdentity,
           participantDetails: p.participantIdentityDetails
         };
         const info: ChannelParticipantInfo = {
           code: p.code,
           participantIdentity: pId,
-          isCreator: p.memberIdentity.address === channelRecord.creatorAddress,
-          isYou: p.memberIdentity.address === participant.memberIdentity.address,
+          isCreator: p.identity.address === channelRecord.creatorAddress,
+          isYou: p.identity.address === participant.identity.address,
           memberSince: p.memberSince,
           lastActive: p.lastActive
         };
@@ -1065,7 +1065,8 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
         if (p.socketId !== socket.socketId) {
           const joinNotificationDetails: JoinNotificationDetails = {
             channelAddress: channelInfo.channelAddress,
-            memberIdentity: channelMemberRecord.signedIdentity,
+            signedIdentity: channelMemberRecord.signedIdentity,
+            memberIdentity: channelMemberRecord.memberIdentity,
             participantCode: participant.code,
             participantDetails: participant.participantIdentityDetails
           };
@@ -1082,8 +1083,8 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
         }
       }
     }
-    await this.updateLastActive(memberIdentity.address);
-    console.log("Switch: Completed join and notified " + notificationCount, socket.socketId, controlRequest.requestId, channelInfo.channelAddress, channelInfo.code, participant.memberIdentity.address, participant.code);
+    await this.updateLastActive(identity.address);
+    console.log("Switch: Completed join and notified " + notificationCount, socket.socketId, controlRequest.requestId, channelInfo.channelAddress, channelInfo.code, participant.identity.address, participant.code);
     return result;
   }
 
@@ -1118,7 +1119,7 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
       return result;
     }
     if (requestDetails.permanently) {
-      await db.updateChannelMemberActive(channelInfo.channelAddress, participant.memberIdentity.address, 'inactive', Date.now());
+      await db.updateChannelMemberActive(channelInfo.channelAddress, participant.identity.address, 'inactive', Date.now());
     }
     const notificationCount = await this.handleParticipantLeft(channelInfo, participant, socket, requestDetails.permanently);
     const leaveResponse: ControlChannelMessage = {
@@ -1131,8 +1132,8 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
       socketId: socket.socketId
     };
     result.deliverControlMessages.push(leaveResponseDirective);
-    await this.updateLastActive(participant.memberIdentity.address);
-    console.log("Switch: Completed leave and notified " + notificationCount, socket.socketId, controlRequest.requestId, channelInfo.channelAddress, channelInfo.code, participant.memberIdentity.address, participant.code);
+    await this.updateLastActive(participant.identity.address);
+    console.log("Switch: Completed leave and notified " + notificationCount, socket.socketId, controlRequest.requestId, channelInfo.channelAddress, channelInfo.code, participant.identity.address, participant.code);
     return result;
   }
 
@@ -1143,7 +1144,7 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
       const participant = channelInfo.participantsByCode[code];
       if (participant) {
         participant.lastActive = now;
-        await db.updateChannelMemberActive(channelAddress, participant.memberIdentity.address, 'active', now);
+        await db.updateChannelMemberActive(channelAddress, participant.identity.address, 'active', now);
       }
     }
   }
@@ -1375,7 +1376,8 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
 
 interface ParticipantInfo {
   memberSignedIdentity: SignedKeyIdentity;
-  memberIdentity: FullIdentity;
+  identity: KeyIdentity;
+  memberIdentity: MemberIdentityInfo;
   participantIdentityDetails: any;
   code: number;
   channelAddress: string;
