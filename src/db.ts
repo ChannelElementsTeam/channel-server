@@ -528,6 +528,10 @@ export class Database {
     return await this.cardRegistryCards.findOne<CardRegistryCardRecord>({ entryId: entryId });
   }
 
+  async updateCardRegistryCard(card: CardRegistryCardRecord): Promise<void> {
+    await this.cardRegistryCards.updateOne({ entryId: card.entryId }, card, { upsert: true });
+  }
+
   async searchCardRegistryCard(searchString: string, categoryPrefix: string, limit = 100): Promise<CardRegistryCardRecord[]> {
     if (!searchString && !categoryPrefix) {
       return await this.cardRegistryCards.find<CardRegistryCardRecord>({ approved: true }).sort({ ranking: -1 }).limit(limit).toArray();
