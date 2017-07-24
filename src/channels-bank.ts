@@ -54,10 +54,20 @@ export class ChannelsBank {
 
   private registerHandlers(restRelativeBaseUrl: string): void {
     this.app.get('/channels-bank.json', (request: Request, response: Response) => {
-      void this.handleDescriptionRequest(request, response);
+      try {
+        void this.handleDescriptionRequest(request, response);
+      } catch (err) {
+        console.error("Bank.provider: Exception", err.toString());
+        response.status(500).send("Internal error: " + err.toString());
+      }
     });
     this.app.post(restRelativeBaseUrl + '/bank', (request: Request, response: Response) => {
-      void this.handleBankRequest(request, response);
+      try {
+        void this.handleBankRequest(request, response);
+      } catch (err) {
+        console.error("Bank.rest: Exception", err.toString());
+        response.status(500).send("Internal error: " + err.toString());
+      }
     });
   }
 

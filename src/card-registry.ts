@@ -38,10 +38,21 @@ export class CardRegistry {
 
   private registerHandlers(restRelativeBaseUrl: string): void {
     this.app.get('/channels-card-registry.json', (request: Request, response: Response) => {
-      void this.handleDescriptionRequest(request, response);
+      try {
+        void this.handleDescriptionRequest(request, response);
+      } catch (err) {
+        console.error("CardRegistry.provider: Exception", err.toString());
+        response.status(500).send("Internal error: " + err.toString());
+      }
     });
     this.app.post(restRelativeBaseUrl + '/cards', (request: Request, response: Response) => {
-      void this.handleCardsRequest(request, response);
+      try {
+        void this.handleCardsRequest(request, response);
+      } catch (err) {
+        console.error("CardRegistry.rest: Exception", err.toString());
+        response.status(500).send("Internal error: " + err.toString());
+      }
+
     });
   }
 

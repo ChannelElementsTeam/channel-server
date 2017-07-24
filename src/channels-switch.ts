@@ -92,13 +92,28 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
 
   private registerHandlers(restRelativeBaseUrl: string): void {
     this.app.get('/channels-switch.json', (request: Request, response: Response) => {
-      void this.handleProviderRequest(request, response);
+      try {
+        void this.handleProviderRequest(request, response);
+      } catch (err) {
+        console.error("Switch.provider: Exception", err.toString());
+        response.status(500).send("Internal error: " + err.toString());
+      }
     });
     this.app.post(restRelativeBaseUrl + '/service', (request: Request, response: Response) => {
-      void this.handleServiceRequest(request, response);
+      try {
+        void this.handleServiceRequest(request, response);
+      } catch (err) {
+        console.error("Switch.rest: Exception", err.toString());
+        response.status(500).send("Internal error: " + err.toString());
+      }
     });
     this.app.get('/i/:share', (request: Request, response: Response) => {
-      void this.handleGetInvitation(request, response);
+      try {
+        void this.handleGetInvitation(request, response);
+      } catch (err) {
+        console.error("Switch.share: Exception", err.toString());
+        response.status(500).send("Internal error: " + err.toString());
+      }
     });
   }
 
