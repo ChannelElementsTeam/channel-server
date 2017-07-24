@@ -79,8 +79,9 @@ class TestClient {
         }
       } else if (controlMessage.type === 'history-message') {
         console.log("History-message", JSON.stringify(messageInfo));
-        // console.log("---------------------------------");
-        // console.log(JSON.stringify(controlMessage, null, 2));
+        // const decodedHistoryMessage = ChannelMessageUtils.parseChannelMessage(messageInfo.controlMessagePayload.binaryPortion, false);
+        // console.log("--------------------------------- History -------");
+        // console.log(JSON.stringify(decodedHistoryMessage, null, 2));
         // console.log("---------------------------------");
       }
     }
