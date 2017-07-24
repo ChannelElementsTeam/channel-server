@@ -17,6 +17,7 @@ import { ChannelsBank } from './channels-bank';
 
 import { clientTester } from './testing/client-test';
 import { ChannelIdentityUtils } from "channels-common";
+import { CardRegistry } from "./card-registry";
 
 const VERSION = 1;
 
@@ -27,6 +28,7 @@ class ChannelElementsServer {
   private started: number;
   private channelSwitch: ChannelsSwitch;
   private channelBank: ChannelsBank;
+  private cardRegistry: CardRegistry;
 
   async start(): Promise<void> {
     this.setupExceptionHandling();
@@ -37,6 +39,8 @@ class ChannelElementsServer {
     await this.channelSwitch.start();
     this.channelBank = new ChannelsBank(this.app, this.server);
     await this.channelBank.start();
+    this.cardRegistry = new CardRegistry(this.app, this.server);
+    await this.cardRegistry.start();
     await this.setupServerPing();
     this.started = Date.now();
 

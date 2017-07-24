@@ -36,7 +36,7 @@ export class CardRegistry {
   }
 
   async start(): Promise<void> {
-    // noop
+    await this.loadCards();
   }
 
   private registerHandlers(restRelativeBaseUrl: string): void {
@@ -218,7 +218,7 @@ export class CardRegistry {
   }
 
   private async loadCards(): Promise<void> {
-    const cardsPath = path.join(__dirname + "../card-registry.json");
+    const cardsPath = path.join(__dirname + "/../card-registry.json");
     console.log("Reading cards from " + cardsPath);
     try {
       const data = fs.readFileSync(cardsPath, 'utf8');
@@ -248,7 +248,30 @@ export class CardRegistry {
   private async updateCardEntry(existing: CardRegistryCardRecord, updated: CardRegistryCardRecord): Promise<void> {
     const now = Date.now();
     if (existing) {
-
+      existing.averageRating = typeof updated.averageRating === 'number' ? updated.averageRating : 0;
+      existing.categoriesCaseInsensitive = [];
+      if (updated.categories) {
+        existing.categories = [];
+        for (const category of updated.categories) {
+          existing.categoriesCaseInsensitive.push(category.toLowerCase());
+        }
+      }
+      existing.collaborative = typeof updated.collaborative === 'boolean' ? updated.collaborative : existing.collaborative;
+      existing.firstApproved = typeof updated.firstApproved === 'number' ? updated.firstApproved : existing.firstApproved;
+      existing.lastApproved = typeof updated.lastApproved === 'number' ? updated.lastApproved : existing.lastApproved;
+      existing.lastSubmitted = typeof updated.lastSubmitted === 'number' ? updated.lastSubmitted : existing.lastSubmitted;
+      existing.offersPayment = typeof updated.offersPayment === 'boolean' ? updated.offersPayment : existing.offersPayment;
+      existing.requestsPayment = typeof updated.requestsPayment === 'boolean' ? updated.requestsPayment : existing.requestsPayment;
+      existing.pending = typeof updated.pending === 'boolean' ? updated.pending : existing.pending;
+      existing.price = typeof updated.price === 'number' ? updated.price : existing.price;
+      existing.purchaseCount = typeof updated.purchaseCount === 'number' ? updated.purchaseCount : existing.purchaseCount;
+      existing.purchasersCount = typeof updated.purchasersCount === 'number' ? updated.purchasersCount : existing.purchasersCount;
+      existing.ranking = typeof updated.ranking === 'number' ? updated.ranking : existing.ranking;
+      existing.cardName = typeof updated.cardName === 'string' ? updated.cardName : existing.cardName;
+      existing.cardSourceWithVersion = typeof updated.cardSourceWithVersion === 'string' ? updated.cardSourceWithVersion : existing.cardSourceWithVersion;
+      existing.description = typeof updated.description === 'string' ? updated.description : existing.description;
+      existing.categoryNames = existing.categories.join(' ').split('/').join(' ').toLowerCase();
+      await db.updateCardRegistryCard(existing);
     } else {
       updated.added = now;
       updated.averageRating = typeof updated.averageRating === 'number' ? updated.averageRating : 0;
@@ -271,7 +294,7 @@ export class CardRegistry {
       updated.purchaseCount = typeof updated.purchaseCount === 'number' ? updated.purchaseCount : 0;
       updated.purchasersCount = typeof updated.purchasersCount === 'number' ? updated.purchasersCount : 0;
       updated.ranking = typeof updated.ranking === 'number' ? updated.ranking : 0;
-      updated.searchText = updated.cardName + " " + updated.cardSourceWithVersion + " " + updated.categories.join(' ') + " " + updated.description;
+      updated.categoryNames = updated.categories.join(' ').split('/').join(' ').toLowerCase();
       await db.updateCardRegistryCard(updated);
     }
   }

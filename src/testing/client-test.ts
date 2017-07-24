@@ -8,7 +8,7 @@ import { ChannelShareCodeResponse, ChannelShareResponse, ChannelsListResponse, C
 import { JoinResponseDetails, ControlChannelMessage, JoinRequestDetails, HistoryRequestDetails, LeaveRequestDetails } from "channels-common";
 import { ChannelMessage, ChannelMessageUtils, MessageToSerialize } from "channels-common";
 import { ChannelContractDetails, ChannelInformation, MemberContractDetails } from "channels-common";
-import { AddressIdentity, ChannelIdentityUtils, KeyIdentity, SignedAddressIdentity, SignedKeyIdentity, UpdateSwitchRegistrationDetails, UpdateSwitchRegistrationResponse, BankServiceRequest, BankTransferDetails, BankTransferResponse, BankGetAccountDetails, BankGetAccountResponse, BankRegisterUserResponse, BankServiceDescription, SwitchingServiceRequest, BankRegisterUserDetails, SwitchServiceDescription, MemberIdentityInfo } from "channels-common";
+import { AddressIdentity, ChannelIdentityUtils, KeyIdentity, SignedAddressIdentity, SignedKeyIdentity, UpdateSwitchRegistrationDetails, UpdateSwitchRegistrationResponse, BankServiceRequest, BankTransferDetails, BankTransferResponse, BankGetAccountDetails, BankGetAccountResponse, BankRegisterUserResponse, BankServiceDescription, SwitchingServiceRequest, BankRegisterUserDetails, SwitchServiceDescription, MemberIdentityInfo, CardRegistryServiceDescription, CardRegistryRegisterUserDetails, CardRegistryServiceRequest, CardRegistryRegisterUserResponse, CardRegistrySearchDetails, CardRegistrySearchResponse } from "channels-common";
 import { Utils } from "../utils";
 import { ServiceDescription, ServiceEndpoints } from "channels-common/bin/channels-common";
 const RestClient = require('node-rest-client').Client;
@@ -16,6 +16,7 @@ const basic = require('basic-authorization-header');
 
 const SWITCH_PROTOCOL_VERSION = 1;
 const BANK_PROTOCOL_VERSION = 1;
+const CARD_REGISTRY_PROTOCOL_VERSION = 1;
 
 interface PostArgs {
   data: any;
@@ -50,6 +51,9 @@ class TestClient {
   privateKey: Uint8Array;
   bankResponse: BankServiceDescription;
   bankAccountResponse: BankRegisterUserResponse;
+  cardRegistryResponse: CardRegistryServiceDescription;
+  cardRegistryRegisterUserResponse: CardRegistryRegisterUserResponse;
+  cardRegistrySearchResponse: CardRegistrySearchResponse;
 
   constructor(name: string) {
     this.privateKey = ChannelIdentityUtils.generatePrivateKey();
@@ -132,6 +136,9 @@ export class ClientTester {
     });
     app.get('/d/test/bankAccount', (request: Request, response: Response) => {
       void this.handleGetBankAccount(request, response);
+    });
+    app.get('/d/test/cardRegistry', (request: Request, response: Response) => {
+      void this.handleCardRegistry(request, response);
     });
   }
 
@@ -861,6 +868,115 @@ export class ClientTester {
         } else {
           console.log("TestClient: Failed", transferResponse.statusCode, new TextDecoder('utf-8').decode(data));
           reject(transferResponse.statusCode);
+        }
+      });
+    });
+  }
+
+  private async handleCardRegistry(request: Request, response: Response): Promise<void> {
+    const id = request.query.id;
+    const search = request.query.search;
+    const category = request.query.category;
+    if (!id) {
+      response.status(400).send("Missing id param");
+      return;
+    }
+    const client = this.clientsById[id];
+    if (!client) {
+      response.status(404).send("No such client");
+      return;
+    }
+    await this.getCardRegistryProvider(client);
+    await this.registerWithCardRegistry(client);
+    await this.searchCardRegistry(client, search, category);
+    response.end();
+  }
+
+  private async getCardRegistryProvider(client: TestClient): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const bankUrl = url.resolve(configuration.get('baseClientUri'), '/channels-card-registry.json');
+      this.restClient.get(bankUrl, (data: any, cardRegistryResponse: Response) => {
+        if (cardRegistryResponse.statusCode === 200) {
+          console.log("TestClient: card registry information", JSON.stringify(data));
+          client.cardRegistryResponse = data as CardRegistryServiceDescription;
+          console.log("CardRegistry Description Response --------------------------------------------------------------------------");
+          console.log(JSON.stringify(client.cardRegistryResponse, null, 2));
+          console.log("CardRegistry Description Response --------------------------------------------------------------------------");
+          resolve();
+        } else {
+          console.error("Failed", cardRegistryResponse.statusCode, new TextDecoder('utf-8').decode(data));
+          reject("Get card registry failed");
+        }
+      });
+    });
+  }
+
+  private async registerWithCardRegistry(client: TestClient): Promise<void> {
+    const details: CardRegistryRegisterUserDetails = {};
+    const request: CardRegistryServiceRequest<SignedKeyIdentity, CardRegistryRegisterUserDetails> = {
+      version: CARD_REGISTRY_PROTOCOL_VERSION,
+      type: 'register-user',
+      identity: client.signedIdentity,
+      details: details
+    };
+    const args: PostArgs = {
+      data: request,
+      headers: {
+        "Content-Type": "application/json"
+      }
+    };
+    console.log("TestClient: Registering bank account...");
+    return new Promise<void>((resolve, reject) => {
+      this.restClient.post(client.cardRegistryResponse.serviceEndpoints.restServiceUrl, args, (data: any, registerResponse: Response) => {
+        if (registerResponse.statusCode === 200) {
+          client.cardRegistryRegisterUserResponse = data as CardRegistryRegisterUserResponse;
+          console.log("TestClient: card registry registration complete", JSON.stringify(client.cardRegistryRegisterUserResponse));
+          console.log("Card Registry Request --------------------------------------------------------------------------");
+          console.log(JSON.stringify(request, null, 2));
+          console.log("Card Registry Response --------------------------------------------------------------------------");
+          console.log(JSON.stringify(data, null, 2));
+          console.log("Card Registry --------------------------------------------------------------------------");
+          resolve();
+        } else {
+          console.log("TestClient: Failed", registerResponse.statusCode, new TextDecoder('utf-8').decode(data));
+          reject(registerResponse.statusCode);
+        }
+      });
+    });
+  }
+
+  private async searchCardRegistry(client: TestClient, search: string, category: string): Promise<void> {
+    const details: CardRegistrySearchDetails = {
+      searchString: search,
+      categoriesFilter: category
+    };
+    const request: CardRegistryServiceRequest<SignedAddressIdentity, CardRegistrySearchDetails> = {
+      version: CARD_REGISTRY_PROTOCOL_VERSION,
+      type: 'search',
+      identity: client.signedAddress,
+      details: details
+    };
+    const args: PostArgs = {
+      data: request,
+      headers: {
+        "Content-Type": "application/json"
+      }
+    };
+    console.log("TestClient: Searching card registry...");
+    return new Promise<void>((resolve, reject) => {
+      this.restClient.post(client.cardRegistryResponse.serviceEndpoints.restServiceUrl, args, (data: any, searchResponse: Response) => {
+        if (searchResponse.statusCode === 200) {
+          client.cardRegistrySearchResponse = data as CardRegistrySearchResponse;
+          console.log("TestClient: card registry search complete", JSON.stringify(client.cardRegistrySearchResponse));
+          console.log("Card Registry Search Request --------------------------------------------------------------------------");
+          console.log(JSON.stringify(request, null, 2));
+          console.log("Card Registry Search Response --------------------------------------------------------------------------");
+          console.log(JSON.stringify(data, null, 2));
+          console.log("Card Registry Search --------------------------------------------------------------------------");
+          resolve();
+        } else {
+          console.log("TestClient: Failed", searchResponse.statusCode, new TextDecoder('utf-8').decode(data));
+          reject(searchResponse.statusCode);
         }
       });
     });

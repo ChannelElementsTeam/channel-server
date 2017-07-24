@@ -109,9 +109,8 @@ export class Database {
   private async initializeCardRegistryCards(): Promise<void> {
     this.cardRegistryCards = this.db.collection('cardRegistryCards');
     await this.cardRegistryCards.createIndex({ entryId: 1 }, { unique: true });
+    await this.cardRegistryCards.createIndex({ cardName: "text", description: "text", categoryNames: "text", cardSourceWithVersion: "text" });
     await this.cardRegistryCards.createIndex({ approved: 1, ranking: -1 });
-    await this.cardRegistryCards.createIndex({ approved: 1, searchText: 1, ranking: -1 });
-    await this.cardRegistryCards.createIndex({ approved: 1, searchText: 1, categoriesCaseInsensitive: 1, ranking: -1 });
     await this.cardRegistryCards.createIndex({ approved: 1, categoryCaseInsensitive: 1, ranking: -1 });
   }
 
@@ -538,16 +537,14 @@ export class Database {
     } else {
       const query: any = { approved: true };
       if (searchString) {
-        query.searchText = {
-          $text: {
-            $search: searchString,
-            $language: 'en'
-          }
+        query.$text = {
+          $search: searchString,
+          $language: 'en'
         };
       }
       if (categoryPrefix) {
         categoryPrefix = Utils.escapeRegex(categoryPrefix);
-        query.categoryCaseInsensitive = { $regex: '^' + categoryPrefix.toLowerCase() };
+        query.categoriesCaseInsensitive = { $regex: '^' + categoryPrefix.toLowerCase() };
       }
       return await this.cardRegistryCards.find<CardRegistryCardRecord>(query).sort({ ranking: -1 }).limit(limit).toArray();
     }

@@ -121,10 +121,10 @@ export interface CardRegistryCardRecord {
   firstApproved: number;
   lastApprovedVersion: string;
   lastApproved: number;
-  searchText: string;
   cardName: string;
   categories: string[];
   categoriesCaseInsensitive: string[];
+  categoryNames: string;
   websiteUrl: string;
   description: string;
   author: string;
