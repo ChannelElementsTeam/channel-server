@@ -94,7 +94,7 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
     this.app.get('/channels-switch.json', (request: Request, response: Response) => {
       void this.handleProviderRequest(request, response);
     });
-    this.app.post(restRelativeBaseUrl + '/service', (request: Request, response: Response) => {
+    this.app.post(restRelativeBaseUrl + '/switch', (request: Request, response: Response) => {
       void this.handleServiceRequest(request, response);
     });
     this.app.get('/i/:share', (request: Request, response: Response) => {
@@ -144,7 +144,7 @@ export class ChannelsSwitch implements TransportEventHandler, SmsInboundMessageH
     const result: ServiceEndpoints = {
       descriptionUrl: this.providerUrl,
       homeUrl: this.homeUrl,
-      restServiceUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/service'),
+      restServiceUrl: url.resolve(this.restBaseUrl, this.restRelativeBaseUrl + '/switch'),
     };
     return result;
   }

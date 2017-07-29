@@ -20,6 +20,13 @@ export interface SwitchRegistrationRecord extends RegistrationRecord {
 
 export interface CardRegistryRegistrationRecord extends RegistrationRecord { }
 
+export interface MineRegistrationRecord extends RegistrationRecord {
+  lastPayment: number;
+  switchProviderUrls: string[];
+  cardRegistryProviderUrls: string[];
+  bankProviderUrl: string;
+}
+
 export interface SmsBlockRecord {
   smsNumber: string;
   blocked: boolean;

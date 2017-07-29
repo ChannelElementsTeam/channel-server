@@ -21,6 +21,7 @@
     "basic-authorization-header": "^0.2.7",
     "body-parser": "^1.17.2",
     "channels-common": "^0.2.2",
+    "channels-rest-client": "^0.2.14",
     "compression": "^1.6.2",
     "cookie-parser": "^1.4.3",
     "express": "^4.15.3",

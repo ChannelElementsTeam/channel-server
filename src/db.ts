@@ -1,6 +1,6 @@
 import { Cursor, MongoClient, Db, Collection } from "mongodb";
 
-import { ChannelRecord, ChannelMemberRecord, ChannelInvitation, MessageRecord, SmsBlockRecord, BankAccountRecord, BankTransactionRecord, BankAccountTransactionRecord, BankInfo, SwitchRegistrationRecord, CardRegistryRegistrationRecord, CardRegistryCardRecord } from "./interfaces/db-records";
+import { ChannelRecord, ChannelMemberRecord, ChannelInvitation, MessageRecord, SmsBlockRecord, BankAccountRecord, BankTransactionRecord, BankAccountTransactionRecord, BankInfo, SwitchRegistrationRecord, CardRegistryRegistrationRecord, CardRegistryCardRecord, MineRegistrationRecord } from "./interfaces/db-records";
 import { configuration } from "./configuration";
 import { ChannelContractDetails, MemberContractDetails, SignedKeyIdentity, NotificationSettings, KeyIdentity, MemberIdentityInfo } from "channels-common";
 import { BankAccountInformation, SignedBankReceipt } from "channels-common/bin/channels-common";
@@ -23,6 +23,8 @@ export class Database {
   private cardRegistryRegistrations: Collection;
   private cardRegistryCards: Collection;
 
+  private mineRegistrations: Collection;
+
   async initialize(): Promise<void> {
     const serverOptions = configuration.get('mongo.serverOptions');
     const options: any = { db: { w: 1 } };
@@ -42,6 +44,7 @@ export class Database {
     await this.initializeBanks();
     await this.initializeCardRegistryRegistrations();
     await this.initializeCardRegistryCards();
+    await this.initializeMineRegistrations();
   }
 
   private async initializeChannels(): Promise<void> {
@@ -112,6 +115,12 @@ export class Database {
     await this.cardRegistryCards.createIndex({ cardName: "text", description: "text", categoryNames: "text", cardSourceWithVersion: "text" });
     await this.cardRegistryCards.createIndex({ approved: 1, ranking: -1 });
     await this.cardRegistryCards.createIndex({ approved: 1, categoryCaseInsensitive: 1, ranking: -1 });
+  }
+
+  private async initializeMineRegistrations(): Promise<void> {
+    this.mineRegistrations = this.db.collection('mineRegistrations');
+    await this.mineRegistrations.createIndex({ address: 1 }, { unique: true });
+    await this.mineRegistrations.createIndex({ address: 1, status: 1, lastActive: -1 });
   }
 
   async insertChannel(channelAddress: string, name: string, creatorAddress: string, transportUrl: string, contract: ChannelContractDetails, status: string): Promise<ChannelRecord> {
@@ -549,6 +558,52 @@ export class Database {
       return await this.cardRegistryCards.find<CardRegistryCardRecord>(query).sort({ ranking: -1 }).limit(limit).toArray();
     }
   }
+
+  async insertMineRegistration(address: string, signedIdentity: SignedKeyIdentity, identity: KeyIdentity, lastActive: number, created: number, status: string): Promise<MineRegistrationRecord> {
+    const now = Date.now();
+    const record: MineRegistrationRecord = {
+      address: address,
+      signedIdentity: signedIdentity,
+      identity: identity,
+      lastActive: lastActive,
+      created: created,
+      status: status,
+      lastPayment: 0,
+      switchProviderUrls: [],
+      cardRegistryProviderUrls: [],
+      bankProviderUrl: null
+    };
+    await this.mineRegistrations.insert(record);
+    return record;
+  }
+
+  async findMineRegistration(address: string): Promise<MineRegistrationRecord> {
+    return await this.mineRegistrations.findOne<MineRegistrationRecord>({ address: address });
+  }
+
+  async updateMineRegistrationLastActive(address: string, lastPayment: number, switchProviderUrls: string[], cardRegistryProviderUrls: string[], bankProviderUrl: string): Promise<void> {
+    const update: any = {
+      lastActive: Date.now()
+    };
+    if (lastPayment) {
+      update.lastPayment = lastPayment;
+    }
+    if (switchProviderUrls) {
+      update.switchProviderUrls = switchProviderUrls;
+    }
+    if (cardRegistryProviderUrls) {
+      update.cardRegistryProviderUrls = cardRegistryProviderUrls;
+    }
+    if (bankProviderUrl) {
+      update.bankProviderUrl = bankProviderUrl;
+    }
+    await this.mineRegistrations.update({ address: address }, { $set: update });
+  }
+
+  async updateMineRegistrationStatus(address: string, status: string): Promise<void> {
+    await this.mineRegistrations.update({ address: address }, { $set: { status: status } });
+  }
+
 }
 
 const db = new Database();

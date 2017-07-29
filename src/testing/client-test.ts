@@ -11,6 +11,7 @@ import { ChannelContractDetails, ChannelInformation, MemberContractDetails } fro
 import { AddressIdentity, ChannelIdentityUtils, KeyIdentity, SignedAddressIdentity, SignedKeyIdentity, UpdateSwitchRegistrationDetails, UpdateSwitchRegistrationResponse, BankServiceRequest, BankTransferDetails, BankTransferResponse, BankGetAccountDetails, BankGetAccountResponse, BankRegisterUserResponse, BankServiceDescription, SwitchingServiceRequest, BankRegisterUserDetails, SwitchServiceDescription, MemberIdentityInfo, CardRegistryServiceDescription, CardRegistryRegisterUserDetails, CardRegistryServiceRequest, CardRegistryRegisterUserResponse, CardRegistrySearchDetails, CardRegistrySearchResponse } from "channels-common";
 import { Utils } from "../utils";
 import { ServiceDescription, ServiceEndpoints } from "channels-common/bin/channels-common";
+import { channelsRestClient } from "channels-rest-client";
 const RestClient = require('node-rest-client').Client;
 const basic = require('basic-authorization-header');
 
@@ -37,10 +38,9 @@ class TestClient {
   id: string;
   signedAddress: SignedAddressIdentity;
   signedIdentity: SignedKeyIdentity;
-  serviceEndpoints: ServiceEndpoints;
   socket?: WebSocketClient;
   conn?: connection;
-  providerResponse?: ServiceDescription;
+  switchDescription?: SwitchServiceDescription;
   channelResponse?: ChannelInformation;
   channelListResponse?: ChannelsListResponse;
   requestIndex = 1;
@@ -49,9 +49,9 @@ class TestClient {
   joinResponseDetails?: JoinResponseDetails;
   switchRegistration?: UpdateSwitchRegistrationResponse;
   privateKey: Uint8Array;
-  bankResponse: BankServiceDescription;
+  bankDescription: BankServiceDescription;
   bankAccountResponse: BankRegisterUserResponse;
-  cardRegistryResponse: CardRegistryServiceDescription;
+  cardRegistryDescription: CardRegistryServiceDescription;
   cardRegistryRegisterUserResponse: CardRegistryRegisterUserResponse;
   cardRegistrySearchResponse: CardRegistrySearchResponse;
 
@@ -155,7 +155,7 @@ export class ClientTester {
     this.clientsById[id] = client;
     await this.getBankProvider(client);
     await this.registerWithBank(client);
-    await this.getSwitchProvider(client);
+    await this.getSwitchProvider(client, configuration.get('baseClientUri'));
     await this.registerWithSwitch(client, phone);
     await this.createChannel(client, name, channelName);
     await this.shareChannel(client, name);
@@ -181,6 +181,7 @@ export class ClientTester {
     await this.getBankProvider(client);
     await this.registerWithBank(client);
     await this.getShare(client, from);
+    await this.getSwitchProvider(client, client.shareCodeResponse.serviceEndpoints.descriptionUrl);
     await this.registerWithSwitch(client, phone);
     await this.accept(client, name);
     await this.listChannels(client);
@@ -249,6 +250,10 @@ export class ClientTester {
     response.end();
   }
 
+  private async getSwitchProvider(client: TestClient, url: string): Promise<void> {
+    client.switchDescription = await channelsRestClient.getSwitchDescription(url);
+  }
+
   private async registerWithSwitch(client: TestClient, phoneNumber: string): Promise<void> {
     const details: UpdateSwitchRegistrationDetails = {
       timezone: 'America/Los_Angeles',
@@ -262,49 +267,7 @@ export class ClientTester {
         }
       }
     };
-    const request: SwitchingServiceRequest<SignedKeyIdentity, UpdateSwitchRegistrationDetails> = {
-      version: SWITCH_PROTOCOL_VERSION,
-      type: 'register-user',
-      identity: client.signedIdentity,
-      details: details
-    };
-    const args: PostArgs = {
-      data: request,
-      headers: {
-        "Content-Type": "application/json"
-      }
-    };
-    return new Promise<void>((resolve, reject) => {
-      this.restClient.post(client.serviceEndpoints.restServiceUrl, args, (data: any, createResponse: Response) => {
-        if (createResponse.statusCode === 200) {
-          console.log("TestClient: Registration updated", JSON.stringify(data));
-          client.switchRegistration = data as UpdateSwitchRegistrationResponse;
-          resolve();
-        } else {
-          console.log("TestClient: Failed", createResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject(createResponse.statusCode);
-        }
-      });
-    });
-  }
-
-  private async getSwitchProvider(client: TestClient): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      const providerUrl = url.resolve(configuration.get('baseClientUri'), '/channels-switch.json');
-
-      this.restClient.get(providerUrl, (data: any, providerResponse: Response) => {
-        if (providerResponse.statusCode === 200) {
-          console.log("TestClient: provider information", JSON.stringify(data));
-          client.providerResponse = data as SwitchServiceDescription;
-          client.serviceEndpoints = client.providerResponse.serviceEndpoints;
-          resolve();
-        } else {
-          console.error("Failed", providerResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject("Get provider failed");
-        }
-      });
-    });
-
+    client.switchRegistration = await channelsRestClient.registerSwitchUser(client.switchDescription.serviceEndpoints.restServiceUrl, client.signedIdentity, details);
   }
 
   private async createChannel(client: TestClient, name: string, channelName: string): Promise<void> {
@@ -342,37 +305,7 @@ export class ClientTester {
     if (channelName) {
       details.name = channelName;
     }
-    const request: SwitchingServiceRequest<SignedAddressIdentity, ChannelCreateDetails> = {
-      version: SWITCH_PROTOCOL_VERSION,
-      type: 'create',
-      identity: client.signedAddress,
-      details: details
-    };
-    const args: PostArgs = {
-      data: request,
-      headers: {
-        "Content-Type": "application/json"
-      }
-    };
-    console.log("TestClient: Creating channel...");
-    return new Promise<void>((resolve, reject) => {
-      this.restClient.post(client.serviceEndpoints.restServiceUrl, args, (data: any, createResponse: Response) => {
-        if (createResponse.statusCode === 200) {
-          console.log("TestClient: Channel created", JSON.stringify(data));
-          client.channelResponse = data as ChannelCreateResponse;
-          console.log("TestClient: channel list reply", JSON.stringify(client.channelResponse));
-          // console.log("Create Channel Request --------------------------------------------------------------------------");
-          // console.log(JSON.stringify(request, null, 2));
-          // console.log("Create Channel Response --------------------------------------------------------------------------");
-          // console.log(JSON.stringify(data, null, 2));
-          // console.log("Create Channel --------------------------------------------------------------------------");
-          resolve();
-        } else {
-          console.log("TestClient: Failed", createResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject(createResponse.statusCode);
-        }
-      });
-    });
+    client.channelResponse = await channelsRestClient.switchCreateChannel(client.switchDescription.serviceEndpoints.restServiceUrl, client.signedAddress, details);
   }
 
   private async openSocket(client: TestClient): Promise<void> {
@@ -463,160 +396,36 @@ export class ClientTester {
       channel: client.channelResponse.channelAddress,
       shareExtensions: { name: name, sharing: true }
     };
-    const shareRequest: SwitchingServiceRequest<SignedAddressIdentity, ChannelShareDetails> = {
-      version: SWITCH_PROTOCOL_VERSION,
-      type: 'share',
-      identity: client.signedAddress,
-      details: details
-    };
-    const args: PostArgs = {
-      data: shareRequest,
-      headers: {
-        "Content-Type": "application/json"
-      }
-    };
-    return new Promise<void>((resolve, reject) => {
-      this.restClient.post(client.serviceEndpoints.restServiceUrl, args, (data: any, shareResponse: Response) => {
-        if (shareResponse.statusCode === 200) {
-          console.log("TestClient: Share code created", JSON.stringify(data));
-          client.shareResponse = data as ChannelShareResponse;
-          // console.log("______________________");
-          // console.log(JSON.stringify(shareRequest, null, 2));
-          // console.log("______________________");
-          // console.log(JSON.stringify(data, null, 2));
-          // console.log("______________________");
-          resolve();
-        } else {
-          console.error("Failed", shareResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject("Share failed");
-        }
-      });
-    });
+    client.shareResponse = await channelsRestClient.switchShareChannel(client.switchDescription.serviceEndpoints.restServiceUrl, client.signedAddress, details);
   }
 
   private async getShare(client: TestClient, from: string): Promise<void> {
     const shareResponse = this.clientsById[from].shareResponse;
-    return new Promise<void>((resolve, reject) => {
-      const args: RestArgs = {
-        headers: {
-          'Accept': 'application/json'
-        }
-      };
-      this.restClient.get(shareResponse.shareCodeUrl, args, (data: any, shareCodeResponse: Response) => {
-        if (shareCodeResponse.statusCode === 200) {
-          console.log("TestClient: Share code fetched", JSON.stringify(data));
-          client.shareCodeResponse = data as ChannelShareCodeResponse;
-          client.serviceEndpoints = client.shareCodeResponse.serviceEndpoints;
-          resolve();
-        } else {
-          console.warn("Failed", shareCodeResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject("Failed to Get share code");
-        }
-      });
-    });
+    client.shareCodeResponse = await channelsRestClient.switchGetInvitationFromShareCode(shareResponse.shareCodeUrl);
   }
 
   private async accept(client: TestClient, name: string): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      const memberContract: MemberContractDetails = {
-        subscribe: true
-      };
-      const details: ChannelAcceptDetails = {
-        invitationId: client.shareCodeResponse.invitationId,
-        memberIdentity: { name: name },
-        memberContract: memberContract
-      };
-      const request: SwitchingServiceRequest<SignedAddressIdentity, ChannelAcceptDetails> = {
-        version: SWITCH_PROTOCOL_VERSION,
-        identity: client.signedAddress,
-        type: 'accept',
-        details: details
-      };
-      const args: PostArgs = {
-        data: request,
-        headers: {
-          "Content-Type": "application/json"
-        }
-      };
-      this.restClient.post(client.serviceEndpoints.restServiceUrl, args, (data: any, acceptResponse: Response) => {
-        if (acceptResponse.statusCode === 200) {
-          console.log("TestClient: Share code fetched", JSON.stringify(data));
-          client.channelResponse = data as ChannelAcceptResponse;
-          resolve();
-        } else {
-          console.warn("Failed", acceptResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject("Failed to accept");
-        }
-      });
-    });
+    const memberContract: MemberContractDetails = {
+      subscribe: true
+    };
+    const details: ChannelAcceptDetails = {
+      invitationId: client.shareCodeResponse.invitationId,
+      memberIdentity: { name: name },
+      memberContract: memberContract
+    };
+    client.channelResponse = await channelsRestClient.switchAcceptChannel(client.switchDescription.serviceEndpoints.restServiceUrl, client.signedAddress, details);
   }
 
   private async getChannel(client: TestClient, channel: string): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      const details: ChannelGetDetails = {
-        channel: channel
-      };
-      const request: SwitchingServiceRequest<SignedAddressIdentity, ChannelGetDetails> = {
-        version: SWITCH_PROTOCOL_VERSION,
-        type: 'get',
-        identity: client.signedAddress,
-        details: details
-      };
-      const args: PostArgs = {
-        data: request,
-        headers: {
-          "Content-Type": "application/json"
-        }
-      };
-      this.restClient.post(client.serviceEndpoints.restServiceUrl, args, (data: any, channelResponse: Response) => {
-        if (channelResponse.statusCode === 200) {
-          client.channelResponse = data as ChannelGetResponse;
-          console.log("TestClient: Channel fetched", JSON.stringify(data));
-          // console.log("______________________");
-          // console.log(JSON.stringify(request, null, 2));
-          // console.log("______________________");
-          // console.log(JSON.stringify(data, null, 2));
-          // console.log("______________________");
-          resolve();
-        } else {
-          console.error("Failed", channelResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject("Get channel failed");
-        }
-      });
-    });
+    const details: ChannelGetDetails = {
+      channel: channel
+    };
+    client.channelResponse = await channelsRestClient.switchGetChannel(client.switchDescription.serviceEndpoints.restServiceUrl, client.signedAddress, details);
   }
 
   private async listChannels(client: TestClient): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      const details: ChannelsListDetails = {};
-      const request: SwitchingServiceRequest<SignedAddressIdentity, ChannelsListDetails> = {
-        version: SWITCH_PROTOCOL_VERSION,
-        type: 'list',
-        identity: client.signedAddress,
-        details: details
-      };
-      const args: PostArgs = {
-        data: request,
-        headers: {
-          "Content-Type": "application/json"
-        }
-      };
-      this.restClient.post(client.serviceEndpoints.restServiceUrl, args, (data: any, channelListResponse: Response) => {
-        if (channelListResponse.statusCode === 200) {
-          client.channelListResponse = data as ChannelsListResponse;
-          console.log("TestClient: Channel list fetched", JSON.stringify(data));
-          // console.log("______________________");
-          // console.log(JSON.stringify(request, null, 2));
-          // console.log("______________________");
-          // console.log(JSON.stringify(data, null, 2));
-          // console.log("______________________");
-          resolve();
-        } else {
-          console.error("Failed", channelListResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject("List channels failed");
-        }
-      });
-    });
+    const details: ChannelsListDetails = {};
+    client.channelListResponse = await channelsRestClient.switchListChannels(client.switchDescription.serviceEndpoints.restServiceUrl, client.signedAddress, details);
   }
 
   private async send(client: TestClient, text: string): Promise<void> {
@@ -657,39 +466,11 @@ export class ClientTester {
     });
   }
 
-  private deleteChannel(client: TestClient): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      const details: ChannelDeleteDetails = {
-        channel: client.channelResponse.channelAddress
-      };
-      const request: SwitchingServiceRequest<SignedAddressIdentity, ChannelDeleteDetails> = {
-        version: SWITCH_PROTOCOL_VERSION,
-        type: 'delete',
-        identity: client.signedAddress,
-        details: details
-      };
-      const args: PostArgs = {
-        data: request,
-        headers: {
-          "Content-Type": "application/json"
-        }
-      };
-      this.restClient.post(client.serviceEndpoints.restServiceUrl, args, (data: any, deleteResponse: Response) => {
-        if (deleteResponse.statusCode === 200) {
-          console.log("TestClient: Channel deleted", JSON.stringify(data));
-          // console.log("______________________");
-          // console.log(JSON.stringify(request, null, 2));
-          // console.log("______________________");
-          // console.log(JSON.stringify(data, null, 2));
-          // console.log("______________________");
-
-          resolve();
-        } else {
-          console.error("Failed", deleteResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject("Delete channel failed");
-        }
-      });
-    });
+  private async deleteChannel(client: TestClient): Promise<void> {
+    const details: ChannelDeleteDetails = {
+      channel: client.channelResponse.channelAddress
+    };
+    await channelsRestClient.switchDeleteChannel(client.switchDescription.serviceEndpoints.restServiceUrl, client.signedAddress, details);
   }
 
   private async handleBankOpen(request: Request, response: Response): Promise<void> {
@@ -746,131 +527,27 @@ export class ClientTester {
   }
 
   private async getBankProvider(client: TestClient): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      const bankUrl = url.resolve(configuration.get('baseClientUri'), '/channels-bank.json');
-      this.restClient.get(bankUrl, (data: any, bankResponse: Response) => {
-        if (bankResponse.statusCode === 200) {
-          console.log("TestClient: bank information", JSON.stringify(data));
-          client.bankResponse = data as BankServiceDescription;
-          console.log("Bank Description Response --------------------------------------------------------------------------");
-          console.log(JSON.stringify(client.bankResponse, null, 2));
-          console.log("Bank Description Response --------------------------------------------------------------------------");
-          resolve();
-        } else {
-          console.error("Failed", bankResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject("Get bank failed");
-        }
-      });
-    });
+    client.bankDescription = await channelsRestClient.getBankDescription(configuration.get('baseClientUri'));
   }
 
   private async registerWithBank(client: TestClient): Promise<void> {
-    const details: BankRegisterUserDetails = {};
-    const request: BankServiceRequest<SignedKeyIdentity, BankRegisterUserDetails> = {
-      version: BANK_PROTOCOL_VERSION,
-      type: 'register-user',
-      identity: client.signedIdentity,
-      details: details
-    };
-    const args: PostArgs = {
-      data: request,
-      headers: {
-        "Content-Type": "application/json"
-      }
-    };
-    console.log("TestClient: Registering bank account...");
-    return new Promise<void>((resolve, reject) => {
-      this.restClient.post(client.bankResponse.serviceEndpoints.restServiceUrl, args, (data: any, registerResponse: Response) => {
-        if (registerResponse.statusCode === 200) {
-          client.bankAccountResponse = data as BankRegisterUserResponse;
-          console.log("TestClient: account opened", JSON.stringify(client.bankAccountResponse));
-          console.log("Open Account Request --------------------------------------------------------------------------");
-          console.log(JSON.stringify(request, null, 2));
-          console.log("Open Account Response --------------------------------------------------------------------------");
-          console.log(JSON.stringify(data, null, 2));
-          console.log("Open Account --------------------------------------------------------------------------");
-          resolve();
-        } else {
-          console.log("TestClient: Failed", registerResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject(registerResponse.statusCode);
-        }
-      });
-    });
+    client.bankAccountResponse = await channelsRestClient.registerBankUser(client.bankDescription.serviceEndpoints.restServiceUrl, client.signedIdentity);
   }
 
   private async getBankAccount(client: TestClient): Promise<void> {
-    const details: BankGetAccountDetails = {};
-    const request: BankServiceRequest<SignedAddressIdentity, BankGetAccountDetails> = {
-      version: BANK_PROTOCOL_VERSION,
-      type: 'get-account',
-      identity: client.signedAddress,
-      details: details
-    };
-    const args: PostArgs = {
-      data: request,
-      headers: {
-        "Content-Type": "application/json"
-      }
-    };
-    return new Promise<void>((resolve, reject) => {
-      this.restClient.post(client.bankResponse.serviceEndpoints.restServiceUrl, args, (data: any, getAccountResponse: Response) => {
-        if (getAccountResponse.statusCode === 200) {
-          client.bankAccountResponse = data as BankGetAccountResponse;
-          console.log("TestClient: account information", JSON.stringify(client.bankAccountResponse));
-          console.log("Get Account Request --------------------------------------------------------------------------");
-          console.log(JSON.stringify(request, null, 2));
-          console.log("Get Account Response --------------------------------------------------------------------------");
-          console.log(JSON.stringify(data, null, 2));
-          console.log("Get Account --------------------------------------------------------------------------");
-          resolve();
-        } else {
-          console.log("TestClient: Failed", getAccountResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject(getAccountResponse.statusCode);
-        }
-      });
-    });
+    client.bankAccountResponse = await channelsRestClient.bankGetAccount(client.bankDescription.serviceEndpoints.restServiceUrl, client.signedAddress);
   }
 
   private async transfer(client: TestClient, toClient: TestClient, amount: number, reference: string): Promise<void> {
     const details: BankTransferDetails = {
       amount: amount,
       to: {
-        bankUrl: toClient.bankResponse.serviceEndpoints.descriptionUrl,
+        bankUrl: toClient.bankDescription.serviceEndpoints.descriptionUrl,
         accountAddress: toClient.signedAddress.address
       },
       requestReference: reference
     };
-    const request: BankServiceRequest<SignedAddressIdentity, BankTransferDetails> = {
-      version: BANK_PROTOCOL_VERSION,
-      type: 'transfer',
-      identity: client.signedAddress,
-      details: details
-    };
-    const args: PostArgs = {
-      data: request,
-      headers: {
-        "Content-Type": "application/json"
-      }
-    };
-    return new Promise<void>((resolve, reject) => {
-      this.restClient.post(client.bankResponse.serviceEndpoints.restServiceUrl, args, (data: any, transferResponse: Response) => {
-        if (transferResponse.statusCode === 200) {
-          const transfer = data as BankTransferResponse;
-          console.log("TestClient: transfer completed", JSON.stringify(transfer));
-          console.log("Transfer Request --------------------------------------------------------------------------");
-          console.log(JSON.stringify(request, null, 2));
-          console.log("Transfer Response Response --------------------------------------------------------------------------");
-          console.log(JSON.stringify(data, null, 2));
-          console.log("Transfer Receipt Decoded Response --------------------------------------------------------------------------");
-          console.log(JSON.stringify(ChannelIdentityUtils.decode(transfer.signedReceipts[0].signedReceipt, client.bankResponse.service.publicKey, Date.now()), null, 2));
-          console.log("Transfer --------------------------------------------------------------------------");
-          resolve();
-        } else {
-          console.log("TestClient: Failed", transferResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject(transferResponse.statusCode);
-        }
-      });
-    });
+    await channelsRestClient.bankTransfer(client.bankDescription.serviceEndpoints.restServiceUrl, client.signedAddress, details);
   }
 
   private async handleCardRegistry(request: Request, response: Response): Promise<void> {
@@ -893,56 +570,11 @@ export class ClientTester {
   }
 
   private async getCardRegistryProvider(client: TestClient): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      const bankUrl = url.resolve(configuration.get('baseClientUri'), '/channels-card-registry.json');
-      this.restClient.get(bankUrl, (data: any, cardRegistryResponse: Response) => {
-        if (cardRegistryResponse.statusCode === 200) {
-          console.log("TestClient: card registry information", JSON.stringify(data));
-          client.cardRegistryResponse = data as CardRegistryServiceDescription;
-          console.log("CardRegistry Description Response --------------------------------------------------------------------------");
-          console.log(JSON.stringify(client.cardRegistryResponse, null, 2));
-          console.log("CardRegistry Description Response --------------------------------------------------------------------------");
-          resolve();
-        } else {
-          console.error("Failed", cardRegistryResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject("Get card registry failed");
-        }
-      });
-    });
+    client.cardRegistryDescription = await channelsRestClient.getCardRegistryDescription(configuration.get('baseClientUri'));
   }
 
   private async registerWithCardRegistry(client: TestClient): Promise<void> {
-    const details: CardRegistryRegisterUserDetails = {};
-    const request: CardRegistryServiceRequest<SignedKeyIdentity, CardRegistryRegisterUserDetails> = {
-      version: CARD_REGISTRY_PROTOCOL_VERSION,
-      type: 'register-user',
-      identity: client.signedIdentity,
-      details: details
-    };
-    const args: PostArgs = {
-      data: request,
-      headers: {
-        "Content-Type": "application/json"
-      }
-    };
-    console.log("TestClient: Registering bank account...");
-    return new Promise<void>((resolve, reject) => {
-      this.restClient.post(client.cardRegistryResponse.serviceEndpoints.restServiceUrl, args, (data: any, registerResponse: Response) => {
-        if (registerResponse.statusCode === 200) {
-          client.cardRegistryRegisterUserResponse = data as CardRegistryRegisterUserResponse;
-          console.log("TestClient: card registry registration complete", JSON.stringify(client.cardRegistryRegisterUserResponse));
-          console.log("Card Registry Request --------------------------------------------------------------------------");
-          console.log(JSON.stringify(request, null, 2));
-          console.log("Card Registry Response --------------------------------------------------------------------------");
-          console.log(JSON.stringify(data, null, 2));
-          console.log("Card Registry --------------------------------------------------------------------------");
-          resolve();
-        } else {
-          console.log("TestClient: Failed", registerResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject(registerResponse.statusCode);
-        }
-      });
-    });
+    client.cardRegistryRegisterUserResponse = await channelsRestClient.registerCardRegistryUser(client.cardRegistryDescription.serviceEndpoints.restServiceUrl, client.signedIdentity);
   }
 
   private async searchCardRegistry(client: TestClient, search: string, category: string): Promise<void> {
@@ -950,36 +582,7 @@ export class ClientTester {
       searchString: search,
       categoriesFilter: category
     };
-    const request: CardRegistryServiceRequest<SignedAddressIdentity, CardRegistrySearchDetails> = {
-      version: CARD_REGISTRY_PROTOCOL_VERSION,
-      type: 'search',
-      identity: client.signedAddress,
-      details: details
-    };
-    const args: PostArgs = {
-      data: request,
-      headers: {
-        "Content-Type": "application/json"
-      }
-    };
-    console.log("TestClient: Searching card registry...");
-    return new Promise<void>((resolve, reject) => {
-      this.restClient.post(client.cardRegistryResponse.serviceEndpoints.restServiceUrl, args, (data: any, searchResponse: Response) => {
-        if (searchResponse.statusCode === 200) {
-          client.cardRegistrySearchResponse = data as CardRegistrySearchResponse;
-          console.log("TestClient: card registry search complete", JSON.stringify(client.cardRegistrySearchResponse));
-          console.log("Card Registry Search Request --------------------------------------------------------------------------");
-          console.log(JSON.stringify(request, null, 2));
-          console.log("Card Registry Search Response --------------------------------------------------------------------------");
-          console.log(JSON.stringify(data, null, 2));
-          console.log("Card Registry Search --------------------------------------------------------------------------");
-          resolve();
-        } else {
-          console.log("TestClient: Failed", searchResponse.statusCode, new TextDecoder('utf-8').decode(data));
-          reject(searchResponse.statusCode);
-        }
-      });
-    });
+    client.cardRegistrySearchResponse = await channelsRestClient.cardRegistrySearch(client.cardRegistryDescription.serviceEndpoints.restServiceUrl, client.signedAddress, details);
   }
 
 }
