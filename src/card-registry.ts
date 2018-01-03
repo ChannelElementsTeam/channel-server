@@ -4,10 +4,13 @@ import * as net from 'net';
 import { configuration } from "./configuration";
 import * as url from 'url';
 import { BankServiceEndpoints, BankServiceRequest, SignedAddressIdentity, SignedKeyIdentity, ChannelIdentityUtils, KeyIdentity, AddressIdentity, BankGetAccountDetails, BankTransferDetails, BankTransferResponse, KeyInfo, BankTransferReceipt, BankGetAccountResponse, CardRegistryServiceDescription, CHANNELS_CARD_REGISTRY_PROTOCOL, ServiceEndpoints, CardRegistryServiceRequest, CardRegistryRegisterUserDetails, CardRegistryRegisterUserResponse, CardRegistrySearchDetails, CardRegistrySearchResponse, CardRegistryEntry } from 'channels-common';
-import { BankAccountRecord, BankInfo, CardRegistryRegistrationRecord } from "./interfaces/db-records";
+import { BankAccountRecord, BankInfo, CardRegistryRegistrationRecord, CardRegistryCardRecord } from "./interfaces/db-records";
 import { db } from "./db";
 import * as uuid from "uuid";
 import { Utils } from "./utils";
+
+import * as path from "path";
+import fs = require('fs');
 
 const DYNAMIC_BASE = '/d';
 const MINIMUM_ACCOUNT_BALANCE = -10;
@@ -33,7 +36,7 @@ export class CardRegistry {
   }
 
   async start(): Promise<void> {
-    // noop
+    await this.loadCards();
   }
 
   private registerHandlers(restRelativeBaseUrl: string): void {
@@ -225,4 +228,90 @@ export class CardRegistry {
     await this.respondWithRegistration(registration, response);
   }
 
+  private async loadCards(): Promise<void> {
+    const cardsPath = path.join(__dirname + "/../card-registry.json");
+    console.log("Reading cards from " + cardsPath);
+    try {
+      const data = fs.readFileSync(cardsPath, 'utf8');
+      const cardInfo = JSON.parse(data) as CardFile;
+      let added = 0;
+      let updated = 0;
+      if (cardInfo.cards) {
+        for (const card of cardInfo.cards) {
+          const existing = await db.findCardRegistryCard(card.entryId);
+          if (!existing || existing.lastApproved < card.lastApproved) {
+            if (existing) {
+              updated++;
+            } else {
+              added++;
+            }
+            await this.updateCardEntry(existing, card);
+          }
+        }
+      }
+      console.log("CardRegistry.loadCards:  Added " + added + " and updated " + updated + " cards");
+    } catch (err) {
+      console.error("CardRegistry.loadCards: failure loading cards", err);
+    }
+
+  }
+
+  private async updateCardEntry(existing: CardRegistryCardRecord, updated: CardRegistryCardRecord): Promise<void> {
+    const now = Date.now();
+    if (existing) {
+      existing.averageRating = typeof updated.averageRating === 'number' ? updated.averageRating : 0;
+      existing.categoriesCaseInsensitive = [];
+      if (updated.categories) {
+        existing.categories = [];
+        for (const category of updated.categories) {
+          existing.categoriesCaseInsensitive.push(category.toLowerCase());
+        }
+      }
+      existing.collaborative = typeof updated.collaborative === 'boolean' ? updated.collaborative : existing.collaborative;
+      existing.firstApproved = typeof updated.firstApproved === 'number' ? updated.firstApproved : existing.firstApproved;
+      existing.lastApproved = typeof updated.lastApproved === 'number' ? updated.lastApproved : existing.lastApproved;
+      existing.lastSubmitted = typeof updated.lastSubmitted === 'number' ? updated.lastSubmitted : existing.lastSubmitted;
+      existing.offersPayment = typeof updated.offersPayment === 'boolean' ? updated.offersPayment : existing.offersPayment;
+      existing.requestsPayment = typeof updated.requestsPayment === 'boolean' ? updated.requestsPayment : existing.requestsPayment;
+      existing.pending = typeof updated.pending === 'boolean' ? updated.pending : existing.pending;
+      existing.price = typeof updated.price === 'number' ? updated.price : existing.price;
+      existing.purchaseCount = typeof updated.purchaseCount === 'number' ? updated.purchaseCount : existing.purchaseCount;
+      existing.purchasersCount = typeof updated.purchasersCount === 'number' ? updated.purchasersCount : existing.purchasersCount;
+      existing.ranking = typeof updated.ranking === 'number' ? updated.ranking : existing.ranking;
+      existing.cardName = typeof updated.cardName === 'string' ? updated.cardName : existing.cardName;
+      existing.cardSourceWithVersion = typeof updated.cardSourceWithVersion === 'string' ? updated.cardSourceWithVersion : existing.cardSourceWithVersion;
+      existing.description = typeof updated.description === 'string' ? updated.description : existing.description;
+      existing.categoryNames = existing.categories.join(' ').split('/').join(' ').toLowerCase();
+      await db.updateCardRegistryCard(existing);
+    } else {
+      updated.added = now;
+      updated.averageRating = typeof updated.averageRating === 'number' ? updated.averageRating : 0;
+      updated.categoriesCaseInsensitive = [];
+      if (!updated.categories) {
+        updated.categories = [];
+      }
+      for (const category of updated.categories) {
+        updated.categoriesCaseInsensitive.push(category.toLowerCase());
+      }
+      updated.collaborative = typeof updated.collaborative === 'boolean' ? updated.collaborative : false;
+      updated.firstApproved = updated.firstApproved || now;
+      updated.lastApproved = updated.lastApproved || now;
+      updated.lastSubmitted = updated.lastSubmitted || now;
+      updated.numberReviews = 0;
+      updated.offersPayment = typeof updated.offersPayment === 'boolean' ? updated.offersPayment : false;
+      updated.requestsPayment = typeof updated.requestsPayment === 'boolean' ? updated.requestsPayment : false;
+      updated.pending = typeof updated.pending === 'boolean' ? updated.pending : false;
+      updated.price = typeof updated.price === 'number' ? updated.price : 0;
+      updated.purchaseCount = typeof updated.purchaseCount === 'number' ? updated.purchaseCount : 0;
+      updated.purchasersCount = typeof updated.purchasersCount === 'number' ? updated.purchasersCount : 0;
+      updated.ranking = typeof updated.ranking === 'number' ? updated.ranking : 0;
+      updated.categoryNames = updated.categories.join(' ').split('/').join(' ').toLowerCase();
+      await db.updateCardRegistryCard(updated);
+    }
+  }
+
+}
+
+interface CardFile {
+  cards: CardRegistryCardRecord[];
 }

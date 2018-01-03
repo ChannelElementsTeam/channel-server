@@ -1,0 +1,93 @@
+{
+  "cards": [
+    {
+      "entryId": "hello-world",
+      "added": 1500679343000,
+      "lastApproved": 1500679343000,
+      "approved": true,
+      "pending": false,
+      "cardSourceWithVersion": "ChannelElementsTeam/card-sample-hello-world#0.0.1",
+      "cardName": "Hello World Sample",
+      "categories": [
+        "samples/basic"
+      ],
+      "websiteUrl": "https://github.com/ChannelElementsTeam/card-sample-hello-world",
+      "description": "The simplest possible sample of a Channels card",
+      "author": "Kingston Duffie <kduffie@hivepoint.com>",
+      "iconUrl": "https://cdn.rawgit.com/ChannelElementsTeam/card-sample-hello-world/7b8d2c80/images/icon.png",
+      "price": 0,
+      "ranking": 1,
+      "requestsPayment": false,
+      "offersPayment": false,
+      "collaborative": false
+    },
+    {
+      "entryId": "shared-toggle",
+      "added": 1500679353000,
+      "lastApproved": 1500679353000,
+      "approved": true,
+      "pending": false,
+      "cardSourceWithVersion": "ChannelElementsTeam/card-sample-shared-toggle#0.0.1",
+      "cardName": "Shared Toggle Sample",
+      "categories": [
+        "samples/basic",
+        "samples/shared"
+      ],
+      "websiteUrl": "https://github.com/ChannelElementsTeam/card-sample-shared-toggle",
+      "description": "The simplest possible sample of a Channels card",
+      "author": "Kingston Duffie <kduffie@hivepoint.com>",
+      "iconUrl": "https://cdn.rawgit.com/ChannelElementsTeam/card-sample-shared-toggle/ff6f3e84/images/icon.png",
+      "price": 0,
+      "ranking": 2,
+      "requestsPayment": false,
+      "offersPayment": false,
+      "collaborative": true
+    },
+    {
+      "entryId": "text-w-comments",
+      "added": 1500679363000,
+      "lastApproved": 1500679363000,
+      "approved": true,
+      "pending": false,
+      "cardSourceWithVersion": "ChannelElementsTeam/card-text-w-comments#0.0.1",
+      "cardName": "Text with Comments",
+      "categories": [
+        "default/text",
+        "text",
+        "collaboration/comments"
+      ],
+      "websiteUrl": "https://github.com/ChannelElementsTeam/card-text-w-comments",
+      "description": "Send simple text messages, but allow participants to click and respond to it",
+      "author": "Kingston Duffie <kduffie@hivepoint.com>",
+      "iconUrl": "https://cdn.rawgit.com/ChannelElementsTeam/card-text-w-comments/7959d8e3/images/icon.png",
+      "price": 0.005,
+      "ranking": 30,
+      "requestsPayment": false,
+      "offersPayment": false,
+      "collaborative": true
+    },
+    {
+      "entryId": "checklist",
+      "added": 1500679373000,
+      "lastApproved": 1500679373000,
+      "approved": true,
+      "pending": false,
+      "cardSourceWithVersion": "ChannelElementsTeam/card-checklist#0.0.1",
+      "cardName": "Checklist",
+      "categories": [
+        "samples/shared",
+        "checklist",
+        "collaboration/checklist"
+      ],
+      "websiteUrl": "https://github.com/ChannelElementsTeam/card-checklist",
+      "description": "A shared checklist with a caption",
+      "author": "Kingston Duffie <kduffie@hivepoint.com>",
+      "iconUrl": "https://cdn.rawgit.com/ChannelElementsTeam/card-checklist/d8af154b/images/icon.png",
+      "price": 0.01,
+      "ranking": 15,
+      "requestsPayment": false,
+      "offersPayment": false,
+      "collaborative": true
+    }
+  ]
+}
